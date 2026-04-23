@@ -313,6 +313,7 @@ impl H7CAD {
                     self.layout_rename_state.as_ref(),
                     tab.scene.first_viewport_scale(),
                     tab.scene.viewport_count(),
+                    tab.scene.active_viewport.is_some(),
                 )
             ]
             .width(Fill)

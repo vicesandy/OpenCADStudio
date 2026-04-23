@@ -38,6 +38,8 @@ impl StatusBar {
         viewport_scale: Option<f64>,
         // Number of user viewports in the current paper layout (0 = model space).
         viewport_count: usize,
+        // True when the user is editing inside a paper-space viewport (MSPACE).
+        in_mspace: bool,
     ) -> Element<'a, Message> {
         let menu_btn = button(text("≡").size(14).color(ICON_COLOR))
             .on_press(Message::Command("MENU".into()))
@@ -59,11 +61,6 @@ impl StatusBar {
         let osnap_active = snapper.is_active();
         let snap_grid_on = snapper.is_on(crate::snap::SnapType::Grid) && snapper.snap_enabled;
 
-        let space_label = if current_layout == "Model" {
-            "MODEL"
-        } else {
-            "LAYOUT"
-        };
         let scale_label = format_scale(viewport_scale);
         let vp_label = if viewport_count > 0 {
             format!("{} VP", viewport_count)
@@ -93,7 +90,10 @@ impl StatusBar {
                 "Object Snap Tracking\nF11"
             ),
             osnap_btn(osnap_active, snapper.snap_enabled, popup_open),
-            status_pill(space_label),
+            tip(
+                space_mode_btn(&current_layout, in_mspace),
+                "Toggle Model/Paper space\nDouble-click viewport to enter MSPACE",
+            ),
             status_pill(scale_label),
         ]
         .spacing(2);
@@ -446,6 +446,55 @@ fn space_tab<'a>(label: String, is_active: bool, rename_edit: Option<&'a str>) -
             .on_right_press(ctx_msg)
             .into()
     }
+}
+
+/// Space-mode toggle button in the status bar.
+///
+/// - Model tab            → "MODEL"  (non-clickable, informational)
+/// - Layout, PSPACE       → "PAPER"  (click → MspaceCommand: enter MSPACE)
+/// - Layout, MSPACE       → "MODEL"  (click → ExitViewport: return to PSPACE)
+fn space_mode_btn(current_layout: &str, in_mspace: bool) -> Element<'static, Message> {
+    let is_model_tab = current_layout == "Model";
+
+    // Labels and styling follow AutoCAD convention:
+    //   PAPER = currently in paper-space editing
+    //   MODEL = currently in model-space editing (either the Model tab or MSPACE)
+    let (label, active, on_press) = if is_model_tab {
+        ("MODEL", false, None)
+    } else if in_mspace {
+        ("MODEL", true, Some(Message::ExitViewport))
+    } else {
+        ("PAPER", false, Some(Message::MspaceCommand))
+    };
+
+    let text_color = if active { SNAP_BORDER_ON } else { OSNAP_OFF_TEXT };
+    let bg_normal = if active { SNAP_ON_BG } else { SNAP_OFF_BG };
+    let bg_hover = if active { SNAP_ON_HOVER } else { SNAP_OFF_HOVER };
+    let border_color = if active { SNAP_BORDER_ON } else { BORDER_COLOR };
+
+    let clickable = on_press.is_some();
+    let mut btn = button(text(label).size(10).color(text_color))
+        .style(move |_: &Theme, status| button::Style {
+            background: Some(Background::Color(match status {
+                button::Status::Hovered if clickable => bg_hover,
+                _ => bg_normal,
+            })),
+            border: Border {
+                color: border_color,
+                width: 1.0,
+                radius: 2.0.into(),
+            },
+            text_color,
+            shadow: iced::Shadow::default(),
+            snap: false,
+        })
+        .padding([2, 6]);
+
+    if let Some(msg) = on_press {
+        btn = btn.on_press(msg);
+    }
+
+    btn.into()
 }
 
 fn status_pill(label: impl Into<String>) -> Element<'static, Message> {
