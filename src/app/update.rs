@@ -1878,6 +1878,11 @@ impl H7CAD {
                 Task::none()
             }
             Message::ToggleDynInput => { self.dyn_input ^= true; Task::none() }
+            Message::ToggleViewCube => { self.show_viewcube ^= true; Task::none() }
+            Message::ToggleNavbar => { self.show_navbar ^= true; Task::none() }
+            Message::ToggleProperties => { self.show_properties ^= true; Task::none() }
+            Message::ToggleFileTabs => { self.show_file_tabs ^= true; Task::none() }
+            Message::ToggleLayoutTabs => { self.show_layout_tabs ^= true; Task::none() }
             Message::ToggleOTrack => {
                 self.snapper.otrack_enabled ^= true;
                 if !self.snapper.otrack_enabled {

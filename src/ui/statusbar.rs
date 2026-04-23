@@ -40,6 +40,8 @@ impl StatusBar {
         viewport_count: usize,
         // True when the user is editing inside a paper-space viewport (MSPACE).
         in_mspace: bool,
+        // Whether the layout tabs (Model/Paper) are visible (LAYOUTTAB).
+        show_layout_tabs: bool,
     ) -> Element<'a, Message> {
         let menu_btn = button(text("≡").size(14).color(ICON_COLOR))
             .on_press(Message::Command("MENU".into()))
@@ -107,14 +109,16 @@ impl StatusBar {
 
         let mut bar = Row::new().align_y(iced::Center).spacing(0);
         bar = bar.push(menu_btn);
-        for name in layouts {
-            let is_active = name == current_layout;
-            let renaming = rename_state
-                .filter(|(orig, _)| *orig == name)
-                .map(|(_, edit)| edit.as_str());
-            bar = bar.push(space_tab(name, is_active, renaming));
+        if show_layout_tabs {
+            for name in layouts {
+                let is_active = name == current_layout;
+                let renaming = rename_state
+                    .filter(|(orig, _)| *orig == name)
+                    .map(|(_, edit)| edit.as_str());
+                bar = bar.push(space_tab(name, is_active, renaming));
+            }
+            bar = bar.push(add_btn);
         }
-        bar = bar.push(add_btn);
         bar = bar.push(iced::widget::Space::new().width(Length::Fill));
         bar = bar.push(right_status);
 

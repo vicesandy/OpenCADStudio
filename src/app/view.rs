@@ -189,13 +189,8 @@ impl H7CAD {
                 vec![]
             };
 
-            overlay::selection_overlay(sel, snap_info, grips, grid, ucs_icon, ost_points, tab.last_cursor_screen, !is_paper)
+            overlay::selection_overlay(sel, snap_info, grips, grid, ucs_icon, ost_points, tab.last_cursor_screen, !is_paper && self.show_viewcube)
         };
-
-        let nav = container(overlay::nav_toolbar())
-            .align_right(Fill)
-            .align_top(Fill)
-            .padding(iced::Padding { top: 148.0, right: 8.0, bottom: 0.0, left: 0.0 });
 
         let info = container(overlay::info_bar(
             if is_paper { &tab.scene.current_layout } else { "Custom View" },
@@ -215,21 +210,6 @@ impl H7CAD {
         .on_middle_release(Message::ViewportMiddleRelease)
         .on_scroll(Message::ViewportScroll)
         .on_exit(Message::ViewportExit);
-
-        let cube_click = mouse_area(container(
-            iced::widget::Space::new()
-                .width(iced::Length::Fixed(VIEWCUBE_HIT_SIZE))
-                .height(iced::Length::Fixed(VIEWCUBE_HIT_SIZE)),
-        ))
-        .on_move(Message::CursorMoved)
-        .on_press(Message::ViewportClick);
-
-        let cube_click = container(cube_click)
-            .align_right(Fill)
-            .align_top(Fill)
-            .padding(iced::Padding { top: VIEWCUBE_PAD, right: VIEWCUBE_PAD, bottom: 0.0, left: 0.0 })
-            .width(Fill)
-            .height(Fill);
 
         let bg_color = if is_paper {
             // Desk color — matches the DESK constant in paper_canvas.rs.
@@ -270,36 +250,67 @@ impl H7CAD {
             container(info).width(Fill).height(Fill),
             selection_overlay,
             viewport_mouse,
-            nav,
-            cube_click,
         ]
         .width(Fill)
         .height(Fill);
+
+        if self.show_navbar {
+            let nav = container(overlay::nav_toolbar())
+                .align_right(Fill)
+                .align_top(Fill)
+                .padding(iced::Padding { top: 148.0, right: 8.0, bottom: 0.0, left: 0.0 });
+            viewport_stack = viewport_stack.push(nav);
+        }
+
+        if self.show_viewcube && !is_paper {
+            let cube_click: Element<'_, Message> = container(
+                mouse_area(container(
+                    iced::widget::Space::new()
+                        .width(iced::Length::Fixed(VIEWCUBE_HIT_SIZE))
+                        .height(iced::Length::Fixed(VIEWCUBE_HIT_SIZE)),
+                ))
+                .on_move(Message::CursorMoved)
+                .on_press(Message::ViewportClick),
+            )
+            .align_right(Fill)
+            .align_top(Fill)
+            .padding(iced::Padding { top: VIEWCUBE_PAD, right: VIEWCUBE_PAD, bottom: 0.0, left: 0.0 })
+            .width(Fill)
+            .height(Fill)
+            .into();
+            viewport_stack = viewport_stack.push(cube_click);
+        }
+
         if let Some(dyn_ol) = dyn_input_overlay {
             viewport_stack = viewport_stack.push(dyn_ol);
         }
 
+        let properties_el: Element<'_, Message> = if self.show_properties {
+            tab.properties.view()
+        } else {
+            Space::new().into()
+        };
+
         let center_stack = iced::widget::stack![
-            row![tab.properties.view(), viewport_stack]
+            row![properties_el, viewport_stack]
                 .width(Fill)
                 .height(Fill),
         ]
         .width(Fill)
         .height(Fill);
 
-        let tab_bar = doc_tab_bar(&self.tabs, self.active_tab);
-
-        let main_ui = container(
-            column![
-                self.ribbon.view(
-                    is_paper,
-                    self.tabs[self.active_tab].history.undo_stack.len(),
-                    self.tabs[self.active_tab].history.redo_stack.len(),
-                ),
-                tab_bar,
-                center_stack,
-                self.command_line.view(),
-                self.status_bar.view(
+        let main_ui = container({
+            let mut col = column![self.ribbon.view(
+                is_paper,
+                self.tabs[self.active_tab].history.undo_stack.len(),
+                self.tabs[self.active_tab].history.redo_stack.len(),
+            )];
+            if self.show_file_tabs {
+                col = col.push(doc_tab_bar(&self.tabs, self.active_tab));
+            }
+            col.push(center_stack)
+               .push(self.command_line.view())
+               .push(self.status_bar.view(
                     &self.snapper,
                     self.snap_popup_open,
                     self.ortho_mode,
@@ -314,11 +325,11 @@ impl H7CAD {
                     tab.scene.first_viewport_scale(),
                     tab.scene.viewport_count(),
                     tab.scene.active_viewport.is_some(),
-                )
-            ]
-            .width(Fill)
-            .height(Fill),
-        )
+                    self.show_layout_tabs,
+               ))
+               .width(Fill)
+               .height(Fill)
+        })
         .style(|_: &Theme| container::Style {
             background: Some(Background::Color(Color { r: 0.11, g: 0.11, b: 0.11, a: 1.0 })),
             ..Default::default()

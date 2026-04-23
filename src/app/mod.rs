@@ -53,6 +53,16 @@ pub(super) struct H7CAD {
     dyn_input: bool,
     /// Show the UCS icon in the bottom-left corner of model space (UCSICON).
     show_ucs_icon: bool,
+    /// Whether the ViewCube 3D gizmo is visible in model space (NAVVCUBE).
+    show_viewcube: bool,
+    /// Whether the navigation toolbar is shown in the viewport (NAVBAR).
+    show_navbar: bool,
+    /// Whether the Properties panel is shown on the left (PROPERTIES).
+    show_properties: bool,
+    /// Whether the document file tabs are shown at the top (FILETAB).
+    show_file_tabs: bool,
+    /// Whether the layout/paper-space tabs are shown at the bottom (LAYOUTTAB).
+    show_layout_tabs: bool,
     /// Last point committed by a drawing command — used as ortho/polar base.
     last_point: Option<glam::Vec3>,
     /// OS window Id for the floating Layer Properties Manager (None when closed).
@@ -248,6 +258,16 @@ pub enum Message {
     ToggleSnapEnabled,
     /// Toggle grid-snap on/off — F9 / SNAP status-bar button.
     ToggleGridSnap,
+    /// Toggle the ViewCube 3D gizmo visibility (NAVVCUBE).
+    ToggleViewCube,
+    /// Toggle the navigation toolbar visibility (NAVBAR).
+    ToggleNavbar,
+    /// Toggle the Properties panel visibility (PROPERTIES).
+    ToggleProperties,
+    /// Toggle the document file tabs at the top (FILETAB).
+    ToggleFileTabs,
+    /// Toggle the layout tabs at the bottom (LAYOUTTAB).
+    ToggleLayoutTabs,
     /// Toggle grid display in the viewport — F7 / GRID status-bar button.
     ToggleGrid,
     /// Toggle orthogonal drawing constraint — F8 / ORTHO status-bar button.
@@ -545,6 +565,11 @@ impl H7CAD {
             show_grid: false,
             dyn_input: true,
             show_ucs_icon: true,
+            show_viewcube: true,
+            show_navbar: true,
+            show_properties: true,
+            show_file_tabs: true,
+            show_layout_tabs: true,
             last_point: None,
             layer_window: None,
             main_window: None,

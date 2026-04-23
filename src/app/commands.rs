@@ -3706,6 +3706,41 @@ impl H7CAD {
                 }
             }
 
+            // ── NAVVCUBE — toggle ViewCube visibility ────────────────────────────
+            "NAVVCUBE" => {
+                return Task::done(Message::ToggleViewCube);
+            }
+
+            // ── NAVBAR — toggle navigation toolbar visibility ────────────────────
+            "NAVBAR" => {
+                return Task::done(Message::ToggleNavbar);
+            }
+
+            // ── PROPERTIES — toggle Properties panel visibility ──────────────────
+            "PROPERTIES" | "PR" | "PROPS" => {
+                return Task::done(Message::ToggleProperties);
+            }
+
+            // ── FILETAB — toggle file/document tabs ──────────────────────────────
+            "FILETAB" => {
+                return Task::done(Message::ToggleFileTabs);
+            }
+
+            // ── LAYOUTTAB — toggle layout/paper-space tabs ───────────────────────
+            "LAYOUTTAB" => {
+                return Task::done(Message::ToggleLayoutTabs);
+            }
+
+            // ── TOOLPALETTES — not yet implemented ───────────────────────────────
+            "TOOLPALETTES" | "TP" => {
+                self.command_line.push_info("TOOLPALETTES: Tool Palettes not yet implemented.");
+            }
+
+            // ── SHEETSET — not yet implemented ───────────────────────────────────
+            "SHEETSET" | "SSM" => {
+                self.command_line.push_info("SHEETSET: Sheet Set Manager not yet implemented.");
+            }
+
             // ── XDATA — read/write extended entity data ──────────────────────────
             // XDATA LIST             — show all xdata records on selected entities
             // XDATA SET <app> <str>  — append a string xdata value for <app>
