@@ -555,25 +555,55 @@ fn legacy_geometry(entity: &EntityType) -> Geometry {
             ];
             (pts, vec![], vec![], vec![])
         }
+        EntityType::Insert(ins) => {
+            let ip = Vec3::new(
+                ins.insert_point.x as f32,
+                ins.insert_point.y as f32,
+                ins.insert_point.z as f32,
+            );
+            let s = 0.1_f32;
+            let pts = vec![
+                [ip.x - s, ip.y, ip.z],
+                [ip.x + s, ip.y, ip.z],
+                [ip.x, ip.y - s, ip.z],
+                [ip.x, ip.y + s, ip.z],
+            ];
+            (pts, vec![(ip, SnapHint::Insertion)], vec![], vec![])
+        }
         EntityType::Hatch(h) => {
+            let elev = h.elevation as f32;
             let mut pts: Vec<[f32; 3]> = Vec::new();
-            'outer: for path in &h.paths {
+            let mut key_verts: Vec<[f32; 3]> = Vec::new();
+            for path in &h.paths {
                 for edge in &path.edges {
-                    if let acadrust::entities::BoundaryEdge::Polyline(poly) = edge {
-                        for v in &poly.vertices {
-                            pts.push([v.x as f32, v.y as f32, 0.0]);
+                    match edge {
+                        acadrust::entities::BoundaryEdge::Polyline(poly) => {
+                            let start_idx = pts.len();
+                            for v in &poly.vertices {
+                                let p = [v.x as f32, v.y as f32, elev];
+                                pts.push(p);
+                                key_verts.push(p);
+                            }
+                            if let Some(first) = pts.get(start_idx).cloned() {
+                                pts.push(first);
+                            }
                         }
-                        if let Some(first) = pts.first().cloned() {
-                            pts.push(first);
+                        acadrust::entities::BoundaryEdge::Line(ln) => {
+                            let p0 = [ln.start.x as f32, ln.start.y as f32, elev];
+                            let p1 = [ln.end.x as f32, ln.end.y as f32, elev];
+                            pts.push(p0);
+                            pts.push(p1);
+                            key_verts.push(p0);
+                            key_verts.push(p1);
                         }
-                        break 'outer;
+                        _ => {}
                     }
                 }
             }
             if pts.is_empty() {
                 pts = vec![[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]];
             }
-            (pts, vec![], vec![], vec![])
+            (pts, vec![], vec![], key_verts)
         }
         EntityType::Ole2Frame(ole) => {
             // OLE objects carry a bounding rectangle in model space.
