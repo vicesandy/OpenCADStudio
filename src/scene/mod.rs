@@ -91,6 +91,13 @@ pub struct Scene {
     /// Per-viewport wire cache for paper-space rendering.
     /// Maps vp_handle → (geometry_epoch, Arc<Vec<WireModel>>).
     viewport_wire_cache: RefCell<HashMap<Handle, (u64, Arc<Vec<WireModel>>)>>,
+    /// Cached tessellation of paper-space layout block entities (title block, annotations, etc.).
+    /// Separate from `wire_cache` so paper_canvas_wires() doesn't re-tessellate on every frame.
+    paper_sheet_cache: RefCell<Option<(u64, Arc<Vec<WireModel>>)>>,
+    /// Per-viewport projected wire cache for the paper canvas (2-D Iced widget).
+    /// Stores projected + clipped wires in paper-space coordinates.
+    /// Maps vp_handle → (geometry_epoch, Vec<WireModel>).
+    paper_projected_cache: RefCell<HashMap<Handle, (u64, Vec<WireModel>)>>,
     /// Active layout name — "Model" or a paper space layout name.
     pub current_layout: String,
     /// GPU render data for hatch fills, keyed by the DXF entity Handle.
@@ -128,6 +135,8 @@ impl Scene {
             image_cache: RefCell::new(None),
             mesh_cache: RefCell::new(None),
             viewport_wire_cache: RefCell::new(HashMap::new()),
+            paper_sheet_cache: RefCell::new(None),
+            paper_projected_cache: RefCell::new(HashMap::new()),
             current_layout: "Model".to_string(),
             hatches: HashMap::new(),
             meshes: HashMap::new(),
@@ -386,6 +395,24 @@ impl Scene {
             .collect()
     }
 
+    /// Cached tessellation of the current layout block's paper-space entities.
+    /// Shared by both `entity_wires_arc()` and `paper_canvas_wires()` so a single
+    /// cache miss triggers only one tessellation pass, not two.
+    fn paper_sheet_wires_arc(&self) -> Arc<Vec<WireModel>> {
+        {
+            let cache = self.paper_sheet_cache.borrow();
+            if let Some((cached_epoch, ref arc)) = *cache {
+                if cached_epoch == self.geometry_epoch {
+                    return Arc::clone(arc);
+                }
+            }
+        }
+        let layout_block = self.current_layout_block_handle();
+        let arc = Arc::new(self.wires_for_block(layout_block));
+        *self.paper_sheet_cache.borrow_mut() = Some((self.geometry_epoch, Arc::clone(&arc)));
+        arc
+    }
+
     /// Build WireModels from all document entities for the current layout.
     /// Returns a shared `Arc` so `build_primitive()` can skip the clone during
     /// navigation frames where no preview wires are active.
@@ -399,7 +426,9 @@ impl Scene {
             }
         }
         let layout_block = self.current_layout_block_handle();
-        let mut wires = self.wires_for_block(layout_block);
+        // Reuse the paper_sheet_cache to avoid a duplicate tessellation pass
+        // when both entity_wires_arc() and paper_canvas_wires() are called in the same frame.
+        let mut wires = (*self.paper_sheet_wires_arc()).clone();
         if self.current_layout != "Model" {
             wires.extend(self.viewport_content_wires(layout_block, None, None));
         }
@@ -699,7 +728,6 @@ impl Scene {
         exclude_vp: Option<Handle>,
     ) -> Vec<WireModel> {
         use acadrust::entities::Viewport;
-        use std::collections::HashSet as HSet;
 
         let viewports: Vec<&Viewport> = self
             .document
@@ -720,21 +748,26 @@ impl Scene {
             return vec![];
         }
 
-        let model_block = self.model_space_block_handle();
         let mut result = Vec::new();
 
         for vp in viewports {
-            // ── Per-viewport frozen layer set ─────────────────────────────
-            let frozen: HSet<Handle> = vp.frozen_layers.iter().cloned().collect();
+            let vp_handle = vp.common.handle;
 
-            // ── View coordinate frame ─────────────────────────────────────
+            // ── Fast path: return cached projected wires ──────────────────
+            {
+                let cache = self.paper_projected_cache.borrow();
+                if let Some((cached_epoch, ref wires)) = cache.get(&vp_handle) {
+                    if *cached_epoch == self.geometry_epoch {
+                        result.extend_from_slice(wires);
+                        continue;
+                    }
+                }
+            }
+
+            // ── Cache miss: compute projection ────────────────────────────
+
             // Use camera_for_viewport so the axes match the GPU renderer exactly.
-            // GPU uses look_at_rh(eye, target, rotation*Y), which gives:
-            //   screen_right = normalize((target-eye) × up) = rotation * X
-            //   screen_up    = rotation * Y
-            // The old Z×vd cross-product gives the opposite sign for views
-            // that have a Y component in view_direction (front/back), causing mirroring.
-            let cam_frame = match self.camera_for_viewport(vp.common.handle) {
+            let cam_frame = match self.camera_for_viewport(vp_handle) {
                 Some(c) => c,
                 None => continue,
             };
@@ -761,34 +794,10 @@ impl Scene {
             let hw = (vp.width / 2.0) as f32;
             let hh = (vp.height / 2.0) as f32;
 
-            // ── Collect model wires with per-vp layer freeze ──────────────
-            let model_wires: Vec<WireModel> = self
-                .document
-                .entities()
-                .filter(|e| {
-                    let c = e.common();
-                    if c.invisible || matches!(e, EntityType::Viewport(_)) {
-                        return false;
-                    }
-                    // Global layer visibility.
-                    if self.document.layers.get(&c.layer)
-                        .map(|l| l.flags.off || l.flags.frozen)
-                        .unwrap_or(false)
-                    {
-                        return false;
-                    }
-                    // Per-viewport frozen layers.
-                    if !frozen.is_empty() {
-                        if let Some(lh) = self.document.layers.get(&c.layer).map(|l| l.handle) {
-                            if frozen.contains(&lh) {
-                                return false;
-                            }
-                        }
-                    }
-                    self.belongs_to_visible_block(c.handle, c.owner_handle, model_block)
-                })
-                .flat_map(|e| self.tessellate_one(e))
-                .collect();
+            // ── Use cached tessellation (model_wires_for_viewport_arc) ────
+            // This eliminates the per-frame tessellate_one() loop that was here
+            // previously; tessellation is now O(1) on navigation frames.
+            let model_wires = self.model_wires_for_viewport_arc(vp_handle);
 
             // ── Project and clip wires into viewport ──────────────────────
             let vp_x0 = pcx - hw;
@@ -796,10 +805,7 @@ impl Scene {
             let vp_y0 = pcy - hh;
             let vp_y1 = pcy + hh;
 
-            // ── Perspective setup ─────────────────────────────────────────
             // camera_dist: how far the camera is from the target plane.
-            // Derived from lens_length (mm, 35mm-film equiv.) and view_height:
-            //   tan(fov_v/2) = 12 / lens_length  →  camera_dist = view_height * lens_length / 24
             let use_perspective = vp.status.perspective && vp.lens_length > 1.0;
             let camera_dist = if use_perspective {
                 (vp.view_height as f32 * vp.lens_length as f32 / 24.0).max(0.001)
@@ -807,7 +813,9 @@ impl Scene {
                 0.0
             };
 
-            for wire in &model_wires {
+            let mut projected: Vec<WireModel> = Vec::new();
+
+            for wire in model_wires.iter() {
                 // Project 3-D model points onto view plane → paper space.
                 let projected_pts: Vec<[f32; 3]> = wire.points.iter().map(|&[mx, my, mz]| {
                     if mx.is_nan() || my.is_nan() || mz.is_nan() {
@@ -817,12 +825,9 @@ impl Scene {
                     let u = mp.dot(view_right);
                     let v = mp.dot(view_up);
                     if use_perspective {
-                        // Eye direction (target → camera) = rotation * Z.
                         let d_vd = mp.dot(cam_frame.rotation * glam::Vec3::Z);
-                        // Forward distance from camera (positive = in front of camera).
                         let fwd = camera_dist - d_vd;
                         if fwd <= 0.001 {
-                            // Point is behind or at the camera — discard.
                             return [f32::NAN; 3];
                         }
                         let factor = camera_dist / fwd;
@@ -832,14 +837,12 @@ impl Scene {
                     }
                 }).collect();
 
-                // Fast AABB pre-reject: skip entirely if no finite point is
-                // anywhere near the viewport.
+                // Fast AABB pre-reject.
                 let any_near = projected_pts.iter().any(|&[x, y, _]| {
                     x.is_finite() && y.is_finite()
                         && x >= vp_x0 - 1.0 && x <= vp_x1 + 1.0
                         && y >= vp_y0 - 1.0 && y <= vp_y1 + 1.0
                 });
-                // Also keep wires whose AABB overlaps the viewport (partial overlap).
                 let (min_x, max_x, min_y, max_y) = projected_pts.iter()
                     .filter(|p| p[0].is_finite())
                     .fold(
@@ -854,7 +857,6 @@ impl Scene {
                     continue;
                 }
 
-                // Cohen-Sutherland clipping: clip every segment to the viewport.
                 let clipped = clip_polyline_to_rect(
                     &projected_pts, vp_x0, vp_y0, vp_x1, vp_y1, pcz,
                 );
@@ -866,10 +868,14 @@ impl Scene {
                 let mut out = wire.clone();
                 out.points = clipped;
                 out.color = [r * 0.80, g * 0.80, b * 0.80, a * 0.85];
-                // Line weights are paper-space pen widths — independent of viewport scale.
                 out.line_weight_px = wire.line_weight_px;
-                result.push(out);
+                projected.push(out);
             }
+
+            // Store in cache, then extend result.
+            self.paper_projected_cache.borrow_mut()
+                .insert(vp_handle, (self.geometry_epoch, projected.clone()));
+            result.extend(projected);
         }
 
         result
@@ -2287,8 +2293,7 @@ impl Scene {
     }
 
     pub(super) fn paper_sheet_wires(&self) -> Vec<WireModel> {
-        let layout_block = self.current_layout_block_handle();
-        self.wires_for_block(layout_block)
+        (*self.paper_sheet_wires_arc()).clone()
     }
 
 
