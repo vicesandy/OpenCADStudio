@@ -618,7 +618,9 @@ impl Scene {
         let doc = &self.document;
         let sel = &self.selected;
         let avp = self.active_viewport;
-        let woff = self.world_offset;
+        // Paper-space entities live in sheet coordinates (mm), not model-world
+        // coordinates, so world_offset must not be subtracted from them.
+        let woff = if self.current_layout == "Model" { self.world_offset } else { [0.0; 3] };
         let mut wires: Vec<WireModel> = visible
             .into_par_iter()
             .flat_map(|e| tessellate_entity(doc, sel, avp, woff, e))
@@ -1233,12 +1235,13 @@ impl Scene {
     // ── Entity management ─────────────────────────────────────────────────
 
     pub fn add_entity(&mut self, mut entity: EntityType) -> Handle {
+        let hatch_offset = if self.current_layout == "Model" { self.world_offset } else { [0.0; 3] };
         let hatch_seed = if let EntityType::Hatch(dxf) = &entity {
             let color = self.render_style(&entity).0;
-            Self::hatch_model_from_dxf(dxf, color, self.world_offset)
+            Self::hatch_model_from_dxf(dxf, color, hatch_offset)
         } else if let EntityType::Solid(solid) = &entity {
             let color = self.render_style(&entity).0;
-            Some(Self::solid_hatch_model(solid, color, self.world_offset))
+            Some(Self::solid_hatch_model(solid, color, hatch_offset))
         } else {
             None
         };
@@ -1401,6 +1404,7 @@ impl Scene {
 
     fn synced_hatch_models(&self) -> Vec<HatchModel> {
         let layout_block = self.current_layout_block_handle();
+        let hatch_offset = if self.current_layout == "Model" { self.world_offset } else { [0.0; 3] };
 
         let layer_hidden = |layer: &str| {
             self.document
@@ -1473,7 +1477,7 @@ impl Scene {
                     continue;
                 }
                 let color = self.render_style(&EntityType::Hatch(dxf.clone())).0;
-                if let Some(mut model) = Self::hatch_model_from_dxf(&dxf, color, self.world_offset) {
+                if let Some(mut model) = Self::hatch_model_from_dxf(&dxf, color, hatch_offset) {
                     if selected {
                         model.color = [0.15, 0.55, 1.00, model.color[3]];
                     }
@@ -1519,11 +1523,14 @@ impl Scene {
     /// Wipeout fill models — rendered in a separate pass AFTER wires so that
     /// wipeouts correctly mask everything below them in the draw order.
     pub(super) fn wipeout_models(&self) -> Vec<HatchModel> {
-        let bg_color: [f32; 4] = if self.current_layout == "Model" {
-            self.bg_color
-        } else {
+        let is_paper = self.current_layout != "Model";
+        let bg_color: [f32; 4] = if is_paper {
             self.paper_bg_color
+        } else {
+            self.bg_color
         };
+        // Paper-space entities are already in small coordinates — don't shift them.
+        let world_offset = if is_paper { [0.0; 3] } else { self.world_offset };
         let mut models = Vec::new();
         for entity in self.document.entities() {
             let EntityType::Wipeout(wo) = entity else { continue };
@@ -1537,7 +1544,7 @@ impl Scene {
             {
                 continue;
             }
-            let boundary = Self::wipeout_boundary_2d(wo, self.world_offset);
+            let boundary = Self::wipeout_boundary_2d(wo, world_offset);
             if boundary.len() >= 3 {
                 let mut fill_color = bg_color;
                 if self.selected.contains(&wo.common.handle) {
@@ -1822,6 +1829,8 @@ impl Scene {
     pub fn populate_hatches_from_document(&mut self) {
         self.hatches.clear();
 
+        let model_block = self.model_space_block_handle();
+
         let entries: Vec<(Handle, EntityType)> = self
             .document
             .entities()
@@ -1833,14 +1842,18 @@ impl Scene {
             .collect();
 
         for (handle, kind) in entries {
+            // Paper-space entities live in sheet coordinates — world_offset must not
+            // be applied to them.  Only model-space entities need the shift.
+            let owner = kind.common().owner_handle;
+            let offset = if owner == model_block { self.world_offset } else { [0.0; 3] };
             let model = match &kind {
                 EntityType::Hatch(dxf) => {
                     let color = tessellate::aci_to_rgba(&dxf.common.color);
-                    Self::hatch_model_from_dxf(dxf, color, self.world_offset)
+                    Self::hatch_model_from_dxf(dxf, color, offset)
                 }
                 EntityType::Solid(solid) => {
                     let color = tessellate::aci_to_rgba(&solid.common.color);
-                    Some(Self::solid_hatch_model(solid, color, self.world_offset))
+                    Some(Self::solid_hatch_model(solid, color, offset))
                 }
                 _ => None,
             };
@@ -2157,6 +2170,7 @@ impl Scene {
     // ── Modify (transform / copy) ─────────────────────────────────────────
 
     pub fn transform_entities(&mut self, handles: &[Handle], t: &EntityTransform) {
+        let hatch_offset = if self.current_layout == "Model" { self.world_offset } else { [0.0; 3] };
         for &h in handles {
             if let Some(entity) = self.document.get_entity_mut(h) {
                 dispatch::apply_transform(entity, t);
@@ -2164,7 +2178,7 @@ impl Scene {
             if self.hatches.contains_key(&h) {
                 let existing_color = self.hatches[&h].color;
                 let new_model = if let Some(EntityType::Hatch(dxf)) = self.document.get_entity(h) {
-                    Self::hatch_model_from_dxf(dxf, existing_color, self.world_offset)
+                    Self::hatch_model_from_dxf(dxf, existing_color, hatch_offset)
                 } else {
                     None
                 };
@@ -2177,6 +2191,7 @@ impl Scene {
     }
 
     pub fn copy_entities(&mut self, handles: &[Handle], t: &EntityTransform) -> Vec<Handle> {
+        let hatch_offset = if self.current_layout == "Model" { self.world_offset } else { [0.0; 3] };
         let clones: Vec<EntityType> = handles
             .iter()
             .filter_map(|&h| self.document.get_entity(h).cloned())
@@ -2189,7 +2204,7 @@ impl Scene {
             if !h.is_null() {
                 let new_model = if let Some(EntityType::Hatch(dxf)) = self.document.get_entity(h) {
                     let color = tessellate::aci_to_rgba(&dxf.common.color);
-                    Self::hatch_model_from_dxf(dxf, color, self.world_offset)
+                    Self::hatch_model_from_dxf(dxf, color, hatch_offset)
                 } else {
                     None
                 };
@@ -2210,10 +2225,11 @@ impl Scene {
             dispatch::apply_grip(entity, grip_id, apply);
         }
         // Rebuild GPU hatch/solid model when a boundary vertex or corner moves.
+        let hatch_offset = if self.current_layout == "Model" { self.world_offset } else { [0.0; 3] };
         match self.document.get_entity(handle) {
             Some(EntityType::Hatch(dxf)) => {
                 let color = tessellate::aci_to_rgba(&dxf.common.color);
-                if let Some(model) = Self::hatch_model_from_dxf(dxf, color, self.world_offset) {
+                if let Some(model) = Self::hatch_model_from_dxf(dxf, color, hatch_offset) {
                     self.hatches.insert(handle, model);
                 } else {
                     self.hatches.remove(&handle);
@@ -2221,7 +2237,7 @@ impl Scene {
             }
             Some(EntityType::Solid(solid)) => {
                 let color = tessellate::aci_to_rgba(&solid.common.color);
-                self.hatches.insert(handle, Self::solid_hatch_model(solid, color, self.world_offset));
+                self.hatches.insert(handle, Self::solid_hatch_model(solid, color, hatch_offset));
             }
             _ => {}
         }
