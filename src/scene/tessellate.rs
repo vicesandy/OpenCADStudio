@@ -26,6 +26,8 @@ use crate::scene::truck_tess::{
 };
 use crate::scene::wire_model::{SnapHint, TangentGeom, WireModel};
 
+const TAU: f64 = std::f64::consts::TAU;
+
 // ── Colour helper ──────────────────────────────────────────────────────────
 
 /// Convert an acadrust Color (ACI index or true-color) to a GPU RGBA value.
@@ -762,22 +764,17 @@ fn legacy_geometry(entity: &EntityType, world_offset: [f64; 3]) -> Geometry {
                             key_verts.push(p1);
                         }
                         acadrust::entities::BoundaryEdge::CircularArc(arc) => {
-                            let (sa, ea) = if arc.counter_clockwise {
-                                (arc.start_angle as f32, arc.end_angle as f32)
-                            } else {
-                                (arc.end_angle as f32, arc.start_angle as f32)
-                            };
-                            let span = if ea > sa {
-                                ea - sa
-                            } else {
-                                ea - sa + std::f32::consts::TAU
-                            };
-                            let segs = ((span / std::f32::consts::TAU) * 32.0)
+                            let sa = arc.start_angle;
+                            let ea = arc.end_angle;
+                            let ccw_end = if ea >= sa { ea } else { ea + TAU };
+                            let (start_a, end_a) = (sa, ccw_end);
+                            let span = end_a - start_a;
+                            let segs = ((span / TAU) * 32.0)
                                 .ceil()
                                 .max(4.0) as u32;
                             if !pts.is_empty() { pts.push([f32::NAN; 3]); }
                             for i in 0..=segs {
-                                let t = sa + span * (i as f32 / segs as f32);
+                                let t = sa + span * (i as f64 / segs as f64);
                                 let p = to_wcs(
                                     arc.center.x + arc.radius * t.cos() as f64,
                                     arc.center.y + arc.radius * t.sin() as f64,
