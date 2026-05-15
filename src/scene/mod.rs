@@ -28,8 +28,6 @@ pub use camera::Projection;
 pub use hatch_model::HatchModel;
 pub use image_model::ImageModel;
 pub use mesh_model::MeshLodSet;
-#[allow(unused_imports)]
-pub use mesh_model::MeshModel;
 pub use object::{GripApply, GripDef};
 pub use pipeline::uniforms::Uniforms;
 pub use pipeline::viewcube::{hit_test, CubeRegion, VIEWCUBE_DRAW_PX, VIEWCUBE_PAD, VIEWCUBE_PX};

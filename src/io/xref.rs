@@ -37,15 +37,7 @@ pub struct XrefInfo {
 ///
 /// Returns a list of [`XrefInfo`] describing each xref block found.
 pub fn resolve_xrefs(doc: &mut CadDocument, base_dir: &Path) -> Vec<XrefInfo> {
-    // Collect xref blocks: (name, raw_path, block_record_handle)
-    //
-    // Note: `BlockRecord::is_loaded` (the DWG R2000+ "loaded" bit) turned out
-    // to be unreliable as a signal of AutoCAD's Unload state — different
-    // files with xrefs the manager calls "Loaded" carry both `Some(true)`
-    // and `Some(false)` on disk. Until we identify the actual on-disk
-    // representation of XREF→Unload (likely in an XREF dependency record
-    // or ACAD_XREF_PANEL_DATA xrecord), we auto-resolve every xref and
-    // rely on frustum culling to keep the GPU bounded.
+    // Auto-resolve every xref — frustum + LOD culling keep GPU cost bounded.
     let xref_entries: Vec<(String, String, Handle)> = doc
         .block_records
         .iter()

@@ -1890,7 +1890,6 @@ impl H7CAD {
                 }
 
                 let session = RefEditSession {
-                    insert_handle,
                     block_name: insert.block_name.clone(),
                     br_handle,
                     temp_handles: vec![],
