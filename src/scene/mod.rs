@@ -217,13 +217,62 @@ fn compute_world_offset(
     // are treated as corruption rather than precision-relevant geometry.
     const SANE_EXTENT: f64 = 1.0e8;
 
+    // The filter here MUST agree with `belongs_to_visible_block` (the
+    // render-time filter): if rendering treats an entity as MSPACE but
+    // we skip it here, our offset misses the geometry that's actually on
+    // screen, and direct WCS-coordinate wires drag f32 precision to its
+    // knees. Likewise, including block-defn entities that the render
+    // path strictly drops would pull the centroid toward block-local
+    // origins.
+    //
+    // Authoritative path: if the model BlockRecord enumerates its
+    // entities via `entity_handles`, use that set directly. Falls back
+    // to the legacy permissive interpretation when no BlockRecord
+    // enumerates anything (legacy DXF without group-code 330) — match
+    // `belongs_to_visible_block`'s permissive default for that case.
+    let model_br = doc
+        .block_records
+        .iter()
+        .find(|br| br.handle == model_block);
+    let mspace_set: Option<std::collections::HashSet<Handle>> = model_br
+        .filter(|br| !br.entity_handles.is_empty())
+        .map(|br| br.entity_handles.iter().copied().collect());
+    let any_enumerated = doc
+        .block_records
+        .iter()
+        .any(|br| !br.entity_handles.is_empty());
+    let owned_by_other_block: std::collections::HashSet<Handle> = if mspace_set.is_none() {
+        doc.block_records
+            .iter()
+            .filter(|br| br.handle != model_block)
+            .flat_map(|br| br.entity_handles.iter().copied())
+            .collect()
+    } else {
+        std::collections::HashSet::new()
+    };
+
     // ── Pass 1: scan MSPACE entity bounding boxes ────────────────────────
     let mut emin = [f64::INFINITY; 3];
     let mut emax = [f64::NEG_INFINITY; 3];
     let mut have = [false; 3];
     for e in doc.entities() {
         let c = e.common();
-        if c.owner_handle != model_block {
+        let h = c.handle;
+        let include = if let Some(ref set) = mspace_set {
+            set.contains(&h)
+        } else if c.owner_handle == model_block {
+            true
+        } else if !c.owner_handle.is_null() {
+            false
+        } else if owned_by_other_block.contains(&h) {
+            false
+        } else {
+            // owner null + h not enumerated by any block: legacy permissive
+            // when no block enumerated at all, strict drop otherwise (same
+            // as belongs_to_visible_block).
+            !any_enumerated
+        };
+        if !include {
             continue;
         }
         // Skip block-defn sentinels and AttributeDefinition — same as
