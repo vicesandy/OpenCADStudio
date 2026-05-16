@@ -1506,6 +1506,15 @@ impl Scene {
         }
 
         // Fallback: tessellate (first call or paper-space context).
+        // wire.key_vertices live in offset-rel coords (world_offset
+        // already subtracted at tessellation time). Add it back so the
+        // result matches Path 1 above and the caller's expectation —
+        // callers (auto_fit_viewport) write the centroid directly to
+        // `Viewport.view_target`, which is a WCS field; storing
+        // offset-rel coords there silently double-subtracts world_offset
+        // inside `camera_for_viewport` and points the viewport at the
+        // wrong location on UTM-scale drawings.
+        let oz = self.world_offset[2] as f32;
         for entity in self.document.entities() {
             let c = entity.common();
             if c.owner_handle != model_block || c.invisible {
@@ -1514,8 +1523,16 @@ impl Scene {
             for wire in self.tessellate_one(entity) {
                 for &[x, y, z] in &wire.key_vertices {
                     if x.is_finite() && y.is_finite() && z.is_finite() {
-                        min = min.min(glam::Vec3::new(x, y, z));
-                        max = max.max(glam::Vec3::new(x, y, z));
+                        min = min.min(glam::Vec3::new(
+                            x + ox as f32,
+                            y + oy as f32,
+                            z + oz,
+                        ));
+                        max = max.max(glam::Vec3::new(
+                            x + ox as f32,
+                            y + oy as f32,
+                            z + oz,
+                        ));
                         any = true;
                     }
                 }
@@ -1618,24 +1635,58 @@ impl Scene {
             let view_right = cam_frame.rotation * glam::Vec3::X;
             let view_up = cam_frame.rotation * glam::Vec3::Y;
 
-            // ── Scale & viewport parameters ───────────────────────────────
-            // view_height is always correct; custom_scale is unreliable in DWG files
-            // (acadrust DWG reader never populates it, so it stays at 1.0).
-            let scale = if vp.view_height.abs() > 1e-9 {
-                (vp.height / vp.view_height) as f32
+            // ── Scale, target, view_center — saved-view-then-fallback ─────
+            //
+            // Honor the file's saved view (view_target + view_center +
+            // view_height) whenever the WCS region it points at overlaps
+            // model content. Some DWG files (typical for AutoCAD
+            // viewports the user never explicitly panned/zoomed into)
+            // arrive with view_target = (0, 0, 0) and a stale view_center
+            // pointing at empty WCS — in that case AutoCAD silently
+            // auto-fits to the model on first display; mirror that so
+            // UTM-scale drawings don't open with blank viewports.
+            let mut effective_view_center = (vp.view_center.x, vp.view_center.y);
+            let mut effective_view_height = vp.view_height as f32;
+
+            // Project the saved view's WCS rect and test against
+            // `world_offset`-centered IQR cluster (`local_extent_max`).
+            let saved_center_wcs_x = vp.view_target.x + vp.view_center.x;
+            let saved_center_wcs_y = vp.view_target.y + vp.view_center.y;
+            let saved_half_h = (effective_view_height as f64) * 0.5;
+            let saved_half_w = saved_half_h * (vp.width / vp.height.max(1.0));
+            let cluster_half = self.local_extent_max.max(1.0) as f64;
+            let cluster_min_x = self.world_offset[0] - cluster_half;
+            let cluster_max_x = self.world_offset[0] + cluster_half;
+            let cluster_min_y = self.world_offset[1] - cluster_half;
+            let cluster_max_y = self.world_offset[1] + cluster_half;
+            let saved_overlaps = saved_center_wcs_x + saved_half_w >= cluster_min_x
+                && saved_center_wcs_x - saved_half_w <= cluster_max_x
+                && saved_center_wcs_y + saved_half_h >= cluster_min_y
+                && saved_center_wcs_y - saved_half_h <= cluster_max_y
+                && effective_view_height > 1e-9;
+
+            if !saved_overlaps {
+                // Saved view points at empty space — auto-fit to the
+                // outlier-immune content cluster (world_offset ±
+                // local_extent_max).
+                let margin = 1.05_f64;
+                let fit_h = cluster_half * 2.0 * margin;
+                let fit_w = fit_h * (vp.width / vp.height.max(1.0));
+                let scale_w = vp.width / fit_w;
+                let scale_h = vp.height / fit_h;
+                let fit_scale = scale_w.min(scale_h).max(1e-12);
+                effective_view_height = (vp.height / fit_scale) as f32;
+                effective_view_center = (self.world_offset[0], self.world_offset[1]);
+            }
+
+            let scale = if effective_view_height.abs() > 1e-9 {
+                vp.height as f32 / effective_view_height
             } else if vp.custom_scale.abs() > 1e-9 {
                 vp.custom_scale as f32
             } else {
                 1.0
             };
 
-            // view_target is in raw model coords; wire points have world_offset
-            // subtracted, so bring target into the same wire-space.
-            let target = glam::Vec3::new(
-                (vp.view_target.x - self.world_offset[0]) as f32,
-                (vp.view_target.y - self.world_offset[1]) as f32,
-                (vp.view_target.z - self.world_offset[2]) as f32,
-            );
             let pcx = vp.center.x as f32;
             let pcy = vp.center.y as f32;
             let pcz = vp.center.z as f32;
@@ -1663,8 +1714,34 @@ impl Scene {
 
             let mut projected: Vec<WireModel> = Vec::new();
 
+            // Precompute precision-stable WCS-space projection inputs in
+            // f64. The previous f32 inner loop suffered catastrophic
+            // cancellation on UTM-scale drawings: `(wire_offset_rel -
+            // target_offset_rel).dot(view_right) - view_center` is a
+            // small paper offset computed by subtracting two values at
+            // ~5e6 magnitude — f32 ULP there is ~0.5 m, so paper output
+            // jittered by cm even when the actual model was clean.
+            //
+            // Do everything WCS-relative in f64; cast to f32 only at the
+            // final paper position.
+            let display_center_x = vp.view_target.x + effective_view_center.0;
+            let display_center_y = vp.view_target.y + effective_view_center.1;
+            let display_center_z = vp.view_target.z;
+            let view_right_d = (
+                view_right.x as f64,
+                view_right.y as f64,
+                view_right.z as f64,
+            );
+            let view_up_d = (view_up.x as f64, view_up.y as f64, view_up.z as f64);
+            let view_fwd = cam_frame.rotation * glam::Vec3::Z;
+            let view_fwd_d = (view_fwd.x as f64, view_fwd.y as f64, view_fwd.z as f64);
+            let camera_dist_d = camera_dist as f64;
+            let scale_d = scale as f64;
+            let pcx_d = pcx as f64;
+            let pcy_d = pcy as f64;
+            let [wo_x, wo_y, wo_z] = self.world_offset;
+
             for wire in model_wires.iter() {
-                // Project 3-D model points onto view plane → paper space.
                 let projected_pts: Vec<[f32; 3]> = wire
                     .points
                     .iter()
@@ -1672,21 +1749,38 @@ impl Scene {
                         if mx.is_nan() || my.is_nan() || mz.is_nan() {
                             return [f32::NAN; 3];
                         }
-                        let mp = glam::Vec3::new(mx, my, mz) - target;
-                        // view_center is the 2-D DCS offset of the display centre from
-                        // view_target; subtract it so model origin maps to viewport centre.
-                        let u = mp.dot(view_right) - vp.view_center.x as f32;
-                        let v = mp.dot(view_up) - vp.view_center.y as f32;
+                        // wire stored offset-rel; reconstruct WCS in f64
+                        // then subtract display center in WCS → small
+                        // f64 mp_proj with full precision.
+                        let mp_x = (mx as f64 + wo_x) - display_center_x;
+                        let mp_y = (my as f64 + wo_y) - display_center_y;
+                        let mp_z = (mz as f64 + wo_z) - display_center_z;
+                        let u = mp_x * view_right_d.0
+                            + mp_y * view_right_d.1
+                            + mp_z * view_right_d.2;
+                        let v = mp_x * view_up_d.0
+                            + mp_y * view_up_d.1
+                            + mp_z * view_up_d.2;
                         if use_perspective {
-                            let d_vd = mp.dot(cam_frame.rotation * glam::Vec3::Z);
-                            let fwd = camera_dist - d_vd;
+                            let d_vd = mp_x * view_fwd_d.0
+                                + mp_y * view_fwd_d.1
+                                + mp_z * view_fwd_d.2;
+                            let fwd = camera_dist_d - d_vd;
                             if fwd <= 0.001 {
                                 return [f32::NAN; 3];
                             }
-                            let factor = camera_dist / fwd;
-                            [pcx + u * factor * scale, pcy + v * factor * scale, pcz]
+                            let factor = camera_dist_d / fwd;
+                            [
+                                (pcx_d + u * factor * scale_d) as f32,
+                                (pcy_d + v * factor * scale_d) as f32,
+                                pcz,
+                            ]
                         } else {
-                            [pcx + u * scale, pcy + v * scale, pcz]
+                            [
+                                (pcx_d + u * scale_d) as f32,
+                                (pcy_d + v * scale_d) as f32,
+                                pcz,
+                            ]
                         }
                     })
                     .collect();
