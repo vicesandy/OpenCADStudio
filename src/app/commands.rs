@@ -1280,7 +1280,17 @@ impl H7CAD {
                 use crate::modules::annotate::dim_baseline::DimBaselineCommand;
                 let cmd = if let Some((p1, p2, dp, rot)) = find_last_linear_dim(&self.tabs[i].scene)
                 {
-                    DimBaselineCommand::from_base(p1, p2, dp, rot)
+                    let doc = &self.tabs[i].scene.document;
+                    let dimdli = doc
+                        .dim_styles
+                        .iter()
+                        .find(|s| {
+                            s.name
+                                .eq_ignore_ascii_case(&doc.header.current_dimstyle_name)
+                        })
+                        .map(|s| s.dimdli as f32)
+                        .unwrap_or(1.5);
+                    DimBaselineCommand::from_base(p1, p2, dp, rot, dimdli)
                 } else {
                     DimBaselineCommand::new()
                 };

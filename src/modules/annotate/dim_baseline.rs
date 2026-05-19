@@ -26,8 +26,8 @@ pub fn tool() -> ToolDef {
     }
 }
 
-/// Default stacking increment (world units) between successive baseline dimensions.
-const DIMDLI: f32 = 1.5;
+/// Fallback stacking increment (world units) when no DimStyle is available.
+const DEFAULT_DIMDLI: f32 = 1.5;
 
 pub struct DimBaselineCommand {
     /// Fixed first-extension-line origin (never changes).
@@ -38,6 +38,8 @@ pub struct DimBaselineCommand {
     perp: Vec3,
     /// Perpendicular distance of the NEXT dimension line from the extension-line axis.
     next_offset: f32,
+    /// Stacking increment from the active DimStyle (DIMDLI).
+    dimdli: f32,
     /// True once we have a base dimension loaded.
     ready: bool,
 }
@@ -49,7 +51,8 @@ impl DimBaselineCommand {
             base_p1: Vec3::ZERO,
             rotation: 0.0,
             perp: Vec3::Y,
-            next_offset: DIMDLI,
+            next_offset: DEFAULT_DIMDLI,
+            dimdli: DEFAULT_DIMDLI,
             ready: false,
         }
     }
@@ -60,7 +63,14 @@ impl DimBaselineCommand {
     /// `p2` — second extension line origin of the base dim (unused for placement, kept for context).
     /// `definition_point` — dim-line position of the base dim (defines perpendicular side).
     /// `rotation` — 0.0 = horizontal, PI/2 = vertical.
-    pub fn from_base(p1: Vec3, _p2: Vec3, definition_point: Vec3, rotation: f64) -> Self {
+    /// `dimdli` — DimStyle stacking increment (use [`DEFAULT_DIMDLI`] when no style is active).
+    pub fn from_base(
+        p1: Vec3,
+        _p2: Vec3,
+        definition_point: Vec3,
+        rotation: f64,
+        dimdli: f32,
+    ) -> Self {
         let axis = if rotation.abs() < 0.1 {
             Vec3::X
         } else {
@@ -68,13 +78,19 @@ impl DimBaselineCommand {
         };
         let perp = Vec3::new(-axis.y, axis.x, 0.0);
         let base_offset = (definition_point - p1).dot(perp);
+        let dimdli = if dimdli.abs() < 1e-6 {
+            DEFAULT_DIMDLI
+        } else {
+            dimdli
+        };
         // Next baseline dim goes one DIMDLI further from the baseline.
-        let next_offset = base_offset + DIMDLI;
+        let next_offset = base_offset + dimdli;
         Self {
             base_p1: p1,
             rotation,
             perp,
             next_offset,
+            dimdli,
             ready: true,
         }
     }
@@ -113,7 +129,7 @@ impl CadCommand for DimBaselineCommand {
         dim.base.actual_measurement = dim.measurement();
 
         // Stack the next dim line further out.
-        self.next_offset += DIMDLI;
+        self.next_offset += self.dimdli;
 
         CmdResult::CommitEntity(EntityType::Dimension(Dimension::Linear(dim)))
     }

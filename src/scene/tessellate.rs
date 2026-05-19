@@ -146,6 +146,7 @@ pub fn tessellate(
     // (leader, text, frame, fill) with distinct colors.
     if let EntityType::Leader(leader) = entity {
         return tessellate_leader_single(
+            document,
             handle,
             leader,
             selected,
@@ -553,7 +554,7 @@ pub fn tessellate_dimension(
         (a, a)
     };
 
-    let geom = dimension_geometry(
+    let mut geom = dimension_geometry(
         dim,
         &arrow1,
         &arrow2,
@@ -575,6 +576,29 @@ pub fn tessellate_dimension(
         },
         world_offset,
     );
+
+    // DIMTMOVE = 1: when the saved text_middle_point sits far from the
+    // dim-line anchor, draw a short leader connecting them. (=0 anchors text
+    // to the dim line — no leader; =2 frees text without a leader.)
+    if let Some(s) = style {
+        if s.dimtmove == 1 {
+            if let Some((anchor, txt)) = dimtmove_leader_endpoints(dim, world_offset) {
+                let gap = dim_txt as f32 * 0.5;
+                if (txt - anchor).length() > gap * 2.0 {
+                    add_segment(&mut geom.dim_lines, anchor, txt);
+                }
+            }
+        }
+        // DIMTOFL / DIMTIX / DIMATFIT / DIMUPT control autofit behaviour at
+        // dim *creation*. At render time we honour the saved text and arrow
+        // positions, so reading them here is a no-op — they shape geometry
+        // upstream rather than here.
+        let _ = (s.dimtofl, s.dimtix, s.dimatfit, s.dimupt);
+        // DIMTXTDIRECTION (RTL) needs per-instance text mirroring on the Text
+        // entity, which the current text struct can't carry. Tracked: read
+        // and ignore so the file round-trips on save.
+        let _ = s.dimtxtdirection;
+    }
 
     // Per-spec colours: DIMCLRD (dim/arrows), DIMCLRE (ext), DIMCLRT (text).
     // 0=ByBlock and 256=ByLayer fall through to entity_color.
@@ -831,6 +855,47 @@ fn split_ext_lines(points: &[[f32; 3]]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
     (first, rest)
 }
 
+/// Endpoints for the DIMTMOVE=1 leader: (anchor on the dim line, saved
+/// text_middle_point). Returns None when the dim has no saved text position
+/// or has no well-defined dim-line midpoint (radius/diameter handled by
+/// their own leg).
+fn dimtmove_leader_endpoints(
+    dim: &Dimension,
+    world_offset: [f64; 3],
+) -> Option<(Vec3, Vec3)> {
+    let base = dim.base();
+    let txt = base.text_middle_point;
+    if txt.x * txt.x + txt.y * txt.y + txt.z * txt.z <= 1e-16 {
+        return None;
+    }
+    let lv = |v| vec3_local(v, world_offset);
+    let anchor = match dim {
+        Dimension::Linear(d) => {
+            let perp = Vec3::new(-(d.rotation.sin() as f32), d.rotation.cos() as f32, 0.0);
+            let first = lv(d.first_point);
+            let second = lv(d.second_point);
+            let def = lv(d.definition_point);
+            let off1 = def.dot(perp) - first.dot(perp);
+            let off2 = def.dot(perp) - second.dot(perp);
+            (first + perp * off1 + second + perp * off2) * 0.5
+        }
+        Dimension::Aligned(d) => {
+            let first = lv(d.first_point);
+            let second = lv(d.second_point);
+            let axis = normalized_or(second - first, Vec3::X);
+            let perp = Vec3::new(-axis.y, axis.x, 0.0);
+            let def = lv(d.definition_point);
+            let off1 = def.dot(perp) - first.dot(perp);
+            let off2 = def.dot(perp) - second.dot(perp);
+            (first + perp * off1 + second + perp * off2) * 0.5
+        }
+        Dimension::Radius(d) => lv(d.definition_point),
+        Dimension::Diameter(d) => (lv(d.angle_vertex) + lv(d.definition_point)) * 0.5,
+        _ => return None,
+    };
+    Some((anchor, lv(txt)))
+}
+
 /// Build a rectangle of filled triangles sitting under the dim text, used
 /// when DIMTFILL = 2 (explicit fill colour). The rect width is estimated
 /// from the formatted text length × character-cell width; an absolutely
@@ -1022,6 +1087,7 @@ impl DimGeom {
 }
 
 fn tessellate_leader_single(
+    document: &CadDocument,
     handle: Handle,
     leader: &Leader,
     selected: bool,
@@ -1066,6 +1132,7 @@ fn tessellate_leader_single(
     let mut points: Vec<[f32; 3]> = verts.iter().map(|v| p3(v)).collect();
     let mut tangents: Vec<TangentGeom> = Vec::new();
     let key_vertices: Vec<[f32; 3]> = verts.iter().map(|v| p3(v)).collect();
+    let mut fill_tris: Vec<[f32; 3]> = Vec::new();
 
     for i in 0..verts.len().saturating_sub(1) {
         tangents.push(TangentGeom::Line {
@@ -1075,28 +1142,55 @@ fn tessellate_leader_single(
     }
 
     if leader.arrow_enabled {
+        // Resolve the active dim style → DIMLDRBLK to pick the arrow shape.
+        // DIMASZ × DIMSCALE drives the size when available; otherwise fall
+        // back to the legacy text-height heuristic.
+        let style = document.dim_styles.iter().find(|s| {
+            s.name.eq_ignore_ascii_case(&leader.dimension_style)
+                || (leader.dimension_style.trim().is_empty()
+                    && s.name.eq_ignore_ascii_case("Standard"))
+        });
+        let dim_scale = style
+            .map(|s| {
+                if s.dimscale > 1e-6 {
+                    s.dimscale
+                } else {
+                    anno_scale as f64
+                }
+            })
+            .unwrap_or(anno_scale as f64);
+        let arrow_size = match style {
+            Some(s) => (s.dimasz * dim_scale) as f32,
+            None => (leader.text_height as f32).max(1.0) * 0.8 * anno_scale,
+        };
+        let arrow = match style {
+            Some(s) => arrow_from_block(document, s.dimldrblk, arrow_size.max(0.001)),
+            None => ArrowKind::Triangle {
+                size: arrow_size.max(0.001),
+                filled: true,
+                size_mul: 1.0,
+            },
+        };
+
         let tip = &verts[0];
         let next = &verts[1];
         let dx = (next.x - tip.x) as f32;
         let dy = (next.y - tip.y) as f32;
         let len = (dx * dx + dy * dy).sqrt().max(1e-9);
-        let (dx, dy) = (dx / len, dy / len);
-        let sz = (leader.text_height as f32).max(1.0) * 0.8 * anno_scale;
-        let a = std::f32::consts::PI / 6.0;
-        let (s, c) = a.sin_cos();
+        let dir = Vec3::new(dx / len, dy / len, 0.0);
         let tip_f = p3(tip);
-        points.push(nan);
-        points.push([
-            tip_f[0] + (dx * c - dy * s) * sz,
-            tip_f[1] + (dx * s + dy * c) * sz,
-            tip_f[2],
-        ]);
-        points.push(tip_f);
-        points.push([
-            tip_f[0] + (dx * c + dy * s) * sz,
-            tip_f[1] + (-dx * s + dy * c) * sz,
-            tip_f[2],
-        ]);
+        let tip_v = Vec3::new(tip_f[0], tip_f[1], tip_f[2]);
+        // Reuse the dim arrow emitter so the leader shape matches the
+        // DIMSTYLE in use (Closed Filled by default, Dot, Tick, …).
+        let mut arrow_pts: Vec<[f32; 3]> = Vec::new();
+        let mut arrow_geom = DimGeom::new();
+        append_arrow(&mut arrow_geom, tip_v, dir, &arrow);
+        if !arrow_geom.dim_lines.is_empty() {
+            arrow_pts.push(nan);
+            arrow_pts.extend(arrow_geom.dim_lines);
+        }
+        points.extend(arrow_pts);
+        fill_tris.extend(arrow_geom.arrow_fill);
     }
 
     if leader.hookline_enabled {
@@ -1129,7 +1223,7 @@ fn tessellate_leader_single(
         aabb: WireModel::UNBOUNDED_AABB,
         plinegen: true,
         vp_scissor: None,
-        fill_tris: vec![],
+        fill_tris,
     }
 }
 
