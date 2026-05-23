@@ -3,18 +3,18 @@ use acadrust::{CadDocument, EntityType};
 use crate::command::EntityTransform;
 use crate::scene::acad_to_truck::TruckEntity;
 use crate::scene::object::{GripApply, GripDef, PropSection};
-use crate::scene::tess_util::LegacyGeometry;
+use crate::scene::tess_util::FallbackGeometry;
 
 pub trait TruckConvertible {
     fn to_truck(&self, document: &CadDocument) -> Option<TruckEntity>;
 }
 
-/// Legacy fallback geometry for entities not covered by the truck
-/// topology pipeline (Viewport, Insert, Hatch outline, Ole2Frame, …).
-/// Returns world-offset-relative `f32` points + snap/key vertices the
+/// Fallback geometry for entities not routed through the truck topology
+/// pipeline (Viewport, Insert, Hatch outline, Ole2Frame). Returns
+/// world-offset-relative `f32` points + snap/key vertices the
 /// dispatcher wraps into a `WireModel`.
-pub trait LegacyTess {
-    fn legacy_geometry(&self, world_offset: [f64; 3]) -> LegacyGeometry;
+pub trait FallbackTess {
+    fn fallback_geometry(&self, world_offset: [f64; 3]) -> FallbackGeometry;
 }
 
 pub trait Grippable {

@@ -119,8 +119,8 @@ impl Transformable for Insert {
     }
 }
 
-impl crate::entities::traits::LegacyTess for Insert {
-    fn legacy_geometry(&self, world_offset: [f64; 3]) -> crate::scene::tess_util::LegacyGeometry {
+impl crate::entities::traits::FallbackTess for Insert {
+    fn fallback_geometry(&self, world_offset: [f64; 3]) -> crate::scene::tess_util::FallbackGeometry {
         let [ox, oy, oz] = world_offset;
         let ip = Vec3::new(
             (self.insert_point.x - ox) as f32,

@@ -3,9 +3,9 @@ use glam::Vec3;
 
 use crate::command::EntityTransform;
 use crate::entities::common::{diamond_grip, edit_prop as edit, parse_f64, ro_prop as ro};
-use crate::entities::traits::{Grippable, LegacyTess, PropertyEditable, Transformable};
+use crate::entities::traits::{Grippable, FallbackTess, PropertyEditable, Transformable};
 use crate::scene::object::{GripApply, GripDef, PropSection, PropValue, Property};
-use crate::scene::tess_util::{arc_segments, arc_signed_span, wire_chord_tol, LegacyGeometry};
+use crate::scene::tess_util::{arc_segments, arc_signed_span, wire_chord_tol, FallbackGeometry};
 use crate::scene::wire_model::SnapHint;
 
 fn properties(h: &Hatch) -> PropSection {
@@ -350,8 +350,8 @@ impl Grippable for Hatch {
     }
 }
 
-impl LegacyTess for Hatch {
-    fn legacy_geometry(&self, world_offset: [f64; 3]) -> LegacyGeometry {
+impl FallbackTess for Hatch {
+    fn fallback_geometry(&self, world_offset: [f64; 3]) -> FallbackGeometry {
         let [ox, oy, oz] = world_offset;
         let normal = (self.normal.x, self.normal.y, self.normal.z);
         // Convert a 2D OCS hatch boundary point to WCS, then subtract world_offset.

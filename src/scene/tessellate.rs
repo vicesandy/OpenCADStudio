@@ -10,8 +10,8 @@
 //   TruckTessResult::Mesh  → MeshModel
 //   TruckObject::Text      → one WireModel per glyph stroke (elevation from entity Z)
 //
-// Entities not handled by acad_to_truck (Viewport, Hatch, …) are tessellated
-// by the legacy geometry() path so nothing regresses.
+// Entities not handled by acad_to_truck (Viewport, Insert, Hatch, Ole2Frame)
+// are tessellated by the FallbackTess fallback_geometry() path.
 
 use crate::entities::leader::LeaderTess;
 use acadrust::types::Color as AcadColor;
@@ -428,8 +428,8 @@ pub fn tessellate(
         }
     }
 
-    // ── Legacy fallback for Viewport and other unhandled types ────────────
-    let (points, snap_pts, tangent_geoms, key_vertices) = legacy_geometry(entity, world_offset);
+    // ── Fallback for Viewport / Insert / Hatch / Ole2Frame ────────────────
+    let (points, snap_pts, tangent_geoms, key_vertices) = fallback_geometry(entity, world_offset);
     vec![WireModel {
         name,
         points,
@@ -603,21 +603,21 @@ pub(crate) fn entity_z(entity: &EntityType) -> f32 {
     }
 }
 
-// ── Legacy geometry (Viewport, Hatch outline, unrecognised) ───────────────
+// ── Fallback geometry (Viewport, Insert, Hatch outline, Ole2Frame) ───────
 //
 // Per-entity blocks have moved to their respective `entities/*.rs` files
-// (Viewport, Insert, Hatch, Ole2Frame) via the `LegacyTess` trait. This
+// (Viewport, Insert, Hatch, Ole2Frame) via the `FallbackTess` trait. This
 // function stays as the dispatcher used by the main `tessellate()` path.
 
-use crate::entities::traits::LegacyTess;
-use crate::scene::tess_util::LegacyGeometry as Geometry;
+use crate::entities::traits::FallbackTess;
+use crate::scene::tess_util::FallbackGeometry as Geometry;
 
-fn legacy_geometry(entity: &EntityType, world_offset: [f64; 3]) -> Geometry {
+fn fallback_geometry(entity: &EntityType, world_offset: [f64; 3]) -> Geometry {
     match entity {
-        EntityType::Viewport(vp) => vp.legacy_geometry(world_offset),
-        EntityType::Insert(ins) => ins.legacy_geometry(world_offset),
-        EntityType::Hatch(h) => h.legacy_geometry(world_offset),
-        EntityType::Ole2Frame(ole) => ole.legacy_geometry(world_offset),
+        EntityType::Viewport(vp) => vp.fallback_geometry(world_offset),
+        EntityType::Insert(ins) => ins.fallback_geometry(world_offset),
+        EntityType::Hatch(h) => h.fallback_geometry(world_offset),
+        EntityType::Ole2Frame(ole) => ole.fallback_geometry(world_offset),
         _ => {
             let s = 0.5_f32;
             (vec![[-s, 0.0, 0.0], [s, 0.0, 0.0]], vec![], vec![], vec![])

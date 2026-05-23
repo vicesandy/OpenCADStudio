@@ -1275,7 +1275,7 @@ impl Scene {
                 return false;
             }
             // Block/BlockEnd are block-defn sentinels, not drawable geometry.
-            // Without this skip they fall through to legacy_geometry's `_`
+            // Without this skip they fall through to fallback_geometry's `_`
             // arm and emit a 1-unit phantom segment at world_offset that
             // poisons fit_all and shows up in selection.
             if matches!(e, EntityType::Block(_) | EntityType::BlockEnd(_)) {

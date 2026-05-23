@@ -202,8 +202,8 @@ impl Transformable for Ole2Frame {
     }
 }
 
-impl crate::entities::traits::LegacyTess for Ole2Frame {
-    fn legacy_geometry(&self, world_offset: [f64; 3]) -> crate::scene::tess_util::LegacyGeometry {
+impl crate::entities::traits::FallbackTess for Ole2Frame {
+    fn fallback_geometry(&self, world_offset: [f64; 3]) -> crate::scene::tess_util::FallbackGeometry {
         // OLE objects carry a bounding rectangle in model space.
         // Render a simple X-through-rectangle placeholder.
         let [ox, oy, oz] = world_offset;

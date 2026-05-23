@@ -567,8 +567,8 @@ impl Transformable for Viewport {
     }
 }
 
-impl crate::entities::traits::LegacyTess for Viewport {
-    fn legacy_geometry(&self, world_offset: [f64; 3]) -> crate::scene::tess_util::LegacyGeometry {
+impl crate::entities::traits::FallbackTess for Viewport {
+    fn fallback_geometry(&self, world_offset: [f64; 3]) -> crate::scene::tess_util::FallbackGeometry {
         let [ox, oy, oz] = world_offset;
         let cx = (self.center.x - ox) as f32;
         let cy = (self.center.y - oy) as f32;

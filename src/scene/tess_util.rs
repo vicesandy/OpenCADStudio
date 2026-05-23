@@ -10,14 +10,13 @@ use glam::Vec3;
 
 use crate::scene::wire_model::{SnapHint, TangentGeom, WireModel};
 
-/// Output of the legacy per-entity geometry path used by entities not
-/// (yet) covered by the truck topology pipeline (Viewport, Insert,
-/// Hatch outline, Ole2Frame, …). Tuple form preserved to avoid
-/// touching every callsite when the dispatcher wraps these into a
-/// WireModel.
+/// Output of the fallback per-entity geometry path used by entities not
+/// covered by the truck topology pipeline (Viewport, Insert, Hatch
+/// outline, Ole2Frame). Tuple form preserved to avoid touching every
+/// callsite when the dispatcher wraps these into a WireModel.
 ///
 /// Layout: `(points, snap_pts, tangent_geoms, key_vertices)`.
-pub type LegacyGeometry = (
+pub type FallbackGeometry = (
     Vec<[f32; 3]>,
     Vec<(Vec3, SnapHint)>,
     Vec<TangentGeom>,
