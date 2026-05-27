@@ -387,49 +387,7 @@ impl OpenCADStudio {
         // 3D face / mesh fills and edges are rendered for the active
         // tab. Hatch fills are deliberately *not* gated by this — the
         // document's FILLMODE still owns 2D fill state.
-        let render_modes: Vec<RenderModeChoice> = vec![
-            RenderModeChoice(acadrust::entities::ViewportRenderMode::Wireframe2D),
-            RenderModeChoice(acadrust::entities::ViewportRenderMode::Wireframe3D),
-            RenderModeChoice(acadrust::entities::ViewportRenderMode::HiddenLine),
-            RenderModeChoice(acadrust::entities::ViewportRenderMode::FlatShaded),
-            RenderModeChoice(acadrust::entities::ViewportRenderMode::GouraudShaded),
-            RenderModeChoice(acadrust::entities::ViewportRenderMode::FlatShadedWithEdges),
-            RenderModeChoice(acadrust::entities::ViewportRenderMode::GouraudShadedWithEdges),
-        ];
-        let info = container(
-            iced::widget::pick_list(
-                render_modes,
-                Some(RenderModeChoice(tab.render_mode)),
-                |c| Message::SetRenderMode(c.0),
-            )
-            .text_size(11),
-        )
-        .style(|_: &Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(Color {
-                r: 0.10,
-                g: 0.10,
-                b: 0.10,
-                a: 0.75,
-            })),
-            border: iced::Border {
-                color: Color {
-                    r: 0.35,
-                    g: 0.35,
-                    b: 0.35,
-                    a: 1.0,
-                },
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            text_color: Some(Color {
-                r: 0.85,
-                g: 0.85,
-                b: 0.85,
-                a: 1.0,
-            }),
-            ..Default::default()
-        })
-        .padding([4, 8]);
+        let info = render_mode_picker(tab.render_mode);
 
         let viewport_mouse = mouse_area(container(
             iced::widget::Space::new().width(Fill).height(Fill),
@@ -931,7 +889,23 @@ fn paper_canvas_view<'a>(tab: &'a super::document::DocumentTab) -> Element<'a, M
             .width(Fill)
             .height(Fill);
 
-            return stack![paper_sheet, positioned, border_layer]
+            // Render-mode picker in the active viewport's top-left corner,
+            // mirroring the model-space overlay. Reads / writes the
+            // viewport entity's own render mode via SetRenderMode.
+            let vp_mode = scene
+                .active_viewport_render_mode()
+                .unwrap_or(acadrust::entities::ViewportRenderMode::Wireframe2D);
+            let picker_layer = column![
+                Space::new().height(iced::Length::Fixed(y + 4.0)),
+                row![
+                    Space::new().width(iced::Length::Fixed(x + 4.0)),
+                    iced::widget::opaque(render_mode_picker(vp_mode)),
+                ],
+            ]
+            .width(Fill)
+            .height(Fill);
+
+            return stack![paper_sheet, positioned, border_layer, picker_layer]
                 .width(Fill)
                 .height(Fill)
                 .into();
@@ -2015,6 +1989,60 @@ pub(super) fn recent_files_panel<'a>(recents: &'a [std::path::PathBuf]) -> Eleme
             ..Default::default()
         })
         .into()
+}
+
+// ── Render-mode picker ──────────────────────────────────────────────────────
+
+/// The 7-way visual-style `pick_list`, styled as a dark overlay chip.
+/// Shared by the model-space viewport (top-left) and each active
+/// paper-space viewport. Emits `SetRenderMode`, which the update loop
+/// routes to the active viewport entity or the model-layout tab.
+fn render_mode_picker<'a>(
+    current: acadrust::entities::ViewportRenderMode,
+) -> Element<'a, Message> {
+    use acadrust::entities::ViewportRenderMode as M;
+    let render_modes: Vec<RenderModeChoice> = vec![
+        RenderModeChoice(M::Wireframe2D),
+        RenderModeChoice(M::Wireframe3D),
+        RenderModeChoice(M::HiddenLine),
+        RenderModeChoice(M::FlatShaded),
+        RenderModeChoice(M::GouraudShaded),
+        RenderModeChoice(M::FlatShadedWithEdges),
+        RenderModeChoice(M::GouraudShadedWithEdges),
+    ];
+    container(
+        iced::widget::pick_list(render_modes, Some(RenderModeChoice(current)), |c| {
+            Message::SetRenderMode(c.0)
+        })
+        .text_size(11),
+    )
+    .style(|_: &Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color {
+            r: 0.10,
+            g: 0.10,
+            b: 0.10,
+            a: 0.75,
+        })),
+        border: iced::Border {
+            color: Color {
+                r: 0.35,
+                g: 0.35,
+                b: 0.35,
+                a: 1.0,
+            },
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        text_color: Some(Color {
+            r: 0.85,
+            g: 0.85,
+            b: 0.85,
+            a: 1.0,
+        }),
+        ..Default::default()
+    })
+    .padding([4, 8])
+    .into()
 }
 
 // ── Dynamic-input field formatting ─────────────────────────────────────────

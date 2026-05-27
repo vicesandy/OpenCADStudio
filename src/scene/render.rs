@@ -512,6 +512,7 @@ impl Scene {
         vp_handle: Handle,
         hover_region: Option<usize>,
         bounds: Rectangle,
+        show_viewcube: bool,
     ) -> Primitive {
         let render_mode = match self.document.get_entity(vp_handle) {
             Some(EntityType::Viewport(vp)) => vp.render_mode,
@@ -551,7 +552,7 @@ impl Scene {
             cam_rotation: cam.view_rotation_mat(),
             hover_region,
             bg_color: self.bg_color,
-            show_viewcube: false,
+            show_viewcube,
             fill_mode: self.document.header.fill_mode,
             view_wireframe,
             mesh_fill: flags.mesh_fill,
@@ -570,8 +571,10 @@ impl Scene {
         hover_region: Option<usize>,
         bounds: Rectangle,
     ) -> PaperViewportPrimitive {
+        // The active (double-clicked) viewport shows the ViewCube gizmo,
+        // mirroring the model-space view.
         PaperViewportPrimitive(
-            self.build_viewport_primitive(vp_handle, hover_region, bounds),
+            self.build_viewport_primitive(vp_handle, hover_region, bounds, true),
         )
     }
 

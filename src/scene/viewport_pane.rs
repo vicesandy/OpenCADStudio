@@ -1,5 +1,6 @@
 use super::render::{CameraState, PaperViewportPrimitive, Primitive};
-use super::Scene;
+use super::{Scene, VIEWCUBE_PX};
+use crate::app::Message;
 use acadrust::Handle;
 use iced::widget::shader;
 use iced::{mouse, Event, Rectangle};
@@ -70,7 +71,7 @@ impl<'a> PaperViewportPane<'a> {
     }
 }
 
-impl<'a, Msg: std::fmt::Debug + Clone> shader::Program<Msg> for PaperViewportPane<'a> {
+impl<'a> shader::Program<Message> for PaperViewportPane<'a> {
     type State = CameraState;
     type Primitive = PaperViewportPrimitive;
 
@@ -90,9 +91,30 @@ impl<'a, Msg: std::fmt::Debug + Clone> shader::Program<Msg> for PaperViewportPan
         event: &Event,
         bounds: Rectangle,
         cursor: mouse::Cursor,
-    ) -> Option<iced::widget::Action<Msg>> {
+    ) -> Option<iced::widget::Action<Message>> {
         self.scene.update_viewcube_state(state, bounds, cursor);
-        let _ = event;
+        // A left click on the ViewCube snaps the viewport's view. The
+        // hit-test runs in bounds-relative coordinates so it matches the
+        // gizmo drawn in this viewport's top-right corner. Clicks outside
+        // the cube return None, so they fall through to the paper sheet
+        // for normal selection / drawing.
+        if let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event {
+            if let Some(pos) = cursor.position_in(bounds) {
+                let rot = self.scene.active_view_rotation_mat();
+                if let Some(region) = super::hit_test(
+                    pos.x,
+                    pos.y,
+                    bounds.width,
+                    bounds.height,
+                    rot,
+                    VIEWCUBE_PX,
+                ) {
+                    return Some(iced::widget::Action::publish(Message::ViewCubeSnap(
+                        region,
+                    )));
+                }
+            }
+        }
         None
     }
 
@@ -127,7 +149,7 @@ impl<'a, Msg: std::fmt::Debug + Clone> shader::Program<Msg> for ViewportPane<'a>
             ),
             ViewportPaneMode::Paper { handle } => {
                 self.scene
-                    .build_viewport_primitive(*handle, state.hover_region, bounds)
+                    .build_viewport_primitive(*handle, state.hover_region, bounds, false)
             }
         }
     }

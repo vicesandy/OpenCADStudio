@@ -669,12 +669,6 @@ impl OpenCADStudio {
             Message::SetRenderMode(mode) => {
                 use acadrust::entities::ViewportRenderMode as M;
                 let i = self.active_tab;
-                self.tabs[i].render_mode = mode;
-                // Keep the legacy `wireframe` bool synced — both wireframe
-                // modes set it, everything else clears it.
-                let wf = matches!(mode, M::Wireframe2D | M::Wireframe3D);
-                self.tabs[i].wireframe = wf;
-                self.ribbon.set_wireframe(wf);
                 let label = match mode {
                     M::Wireframe2D => "Wireframe 2D",
                     M::Wireframe3D => "Wireframe 3D",
@@ -684,6 +678,21 @@ impl OpenCADStudio {
                     M::FlatShadedWithEdges => "Flat Shaded + Edges",
                     M::GouraudShadedWithEdges => "Gouraud Shaded + Edges",
                 };
+                // In a paper layout with an active (double-clicked)
+                // viewport, the picker drives that viewport entity's own
+                // render mode; the model-layout tab style is untouched.
+                if self.tabs[i].scene.set_active_viewport_render_mode(mode) {
+                    self.tabs[i].scene.bump_geometry();
+                    self.command_line
+                        .push_output(&format!("Viewport visual style: {label}"));
+                    return Task::none();
+                }
+                self.tabs[i].render_mode = mode;
+                // Keep the legacy `wireframe` bool synced — both wireframe
+                // modes set it, everything else clears it.
+                let wf = matches!(mode, M::Wireframe2D | M::Wireframe3D);
+                self.tabs[i].wireframe = wf;
+                self.ribbon.set_wireframe(wf);
                 self.tabs[i].visual_style = label.into();
                 // Re-upload face3d fills on the next frame — the render
                 // pipeline keys its upload cache off `geometry_epoch`.

@@ -2199,6 +2199,36 @@ impl Scene {
         }
     }
 
+    /// Render mode of the active paper-space viewport, or `None` when no
+    /// viewport is active (PSPACE / model layout).
+    pub fn active_viewport_render_mode(
+        &self,
+    ) -> Option<acadrust::entities::ViewportRenderMode> {
+        let h = self.active_viewport?;
+        match self.document.get_entity(h) {
+            Some(acadrust::EntityType::Viewport(vp)) => Some(vp.render_mode),
+            _ => None,
+        }
+    }
+
+    /// Set the active paper-space viewport's render mode. Returns `true`
+    /// when a viewport was active and updated; `false` (no-op) otherwise,
+    /// so the caller can fall back to the model-layout render mode.
+    pub fn set_active_viewport_render_mode(
+        &mut self,
+        mode: acadrust::entities::ViewportRenderMode,
+    ) -> bool {
+        let Some(h) = self.active_viewport else {
+            return false;
+        };
+        if let Some(acadrust::EntityType::Viewport(vp)) = self.document.get_entity_mut(h) {
+            vp.render_mode = mode;
+            true
+        } else {
+            false
+        }
+    }
+
     /// View-rotation matrix for the active viewport (MSPACE), or the
     /// paper-space camera's matrix when not in MSPACE.
     /// Used by ViewCube hit-testing so clicks map to the correct camera.
