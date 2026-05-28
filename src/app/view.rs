@@ -5,7 +5,7 @@ use super::document::{DynComponent, DynFieldEntry};
 use super::{Message, OpenCADStudio};
 use crate::scene::grip::{grips_to_screen, grips_to_screen_paper};
 use crate::scene::paper_canvas::PaperCanvas;
-use crate::scene::viewport_pane::{PaperViewportPane, ViewportPane};
+use crate::scene::viewport_pane::ViewportPane;
 use crate::scene::{VIEWCUBE_DRAW_PX, VIEWCUBE_PAD};
 use crate::ui::overlay;
 use iced::widget::{
@@ -253,10 +253,13 @@ impl OpenCADStudio {
         // Surrounding chrome (tab bar, status bar) stays; the welcome widget
         // returned here also flags the rest of `view` to skip drawing-only
         // overlays via `tab.is_start`.
+        // Unified GPU widget for both layouts. In a paper layout the
+        // PaperCanvas (2-D sheet + paper entities + viewport borders) is
+        // layered underneath this shader so the area outside floating
+        // viewports shows the sheet; the shader only blits inside each
+        // content viewport's scissor rect.
         let viewport_3d: Element<'_, Message> = if tab.is_start {
             start_page_view()
-        } else if is_paper {
-            paper_canvas_view(tab)
         } else {
             shader(ViewportPane::model(
                 &tab.scene,
@@ -457,6 +460,21 @@ impl OpenCADStudio {
                 .height(Fill)]
             .width(Fill)
             .height(Fill)
+        } else if is_paper {
+            // Paper layout: 2-D sheet + paper entities + viewport borders
+            // underneath, unified GPU shader on top (only paints inside
+            // each content viewport's scissor rect so the sheet shows
+            // through outside them).
+            let paper_sheet: Element<'_, Message> =
+                canvas(PaperCanvas::new(&tab.scene)).width(Fill).height(Fill).into();
+            stack![
+                paper_sheet,
+                container(viewport_3d).width(Fill).height(Fill),
+                selection_overlay,
+                viewport_mouse,
+            ]
+            .width(Fill)
+            .height(Fill)
         } else {
             stack![
                 container(viewport_3d)
@@ -559,6 +577,35 @@ impl OpenCADStudio {
         if let Some(rect) = active_vp_rect {
             let x = rect.x.max(0.0);
             let y = rect.y.max(0.0);
+            // Highlight the active viewport with a 2-px border so its
+            // boundary is always visible over the GPU shader.
+            const VP_BORDER: Color = Color {
+                r: 0.18,
+                g: 0.52,
+                b: 0.95,
+                a: 1.0,
+            };
+            let border_frame = container(
+                Space::new()
+                    .width(iced::Length::Fixed(rect.width.max(1.0)))
+                    .height(iced::Length::Fixed(rect.height.max(1.0))),
+            )
+            .style(move |_: &Theme| container::Style {
+                border: iced::Border {
+                    color: VP_BORDER,
+                    width: 2.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            });
+            let border_layer = column![
+                Space::new().height(iced::Length::Fixed(y)),
+                row![Space::new().width(iced::Length::Fixed(x)), border_frame,],
+            ]
+            .width(Fill)
+            .height(Fill);
+            viewport_stack = viewport_stack.push(border_layer);
+
             let vp_mode = tab
                 .scene
                 .active_viewport_render_mode()
@@ -930,89 +977,6 @@ impl OpenCADStudio {
     pub(super) fn focus_cmd_input(&self) -> Task<Message> {
         iced::widget::operation::focus(iced::widget::Id::new(crate::ui::command_line::CMD_INPUT_ID))
     }
-}
-
-// ── Paper canvas ──────────────────────────────────────────────────────────
-//
-// PSPACE: single full-canvas PaperSheet widget — renders paper entities plus
-//   model content of all viewports via CPU projection.
-//
-// MSPACE (active viewport): PaperSheet widget (excludes the active viewport
-//   from its CPU projection) + a PaperViewportPane widget overlaid at the
-//   active viewport's screen-space position.  PaperViewportPane uses a
-//   distinct pipeline type (PaperViewportPipeline) so Iced's per-type storage
-//   keeps the two prepare() calls from overwriting each other.
-
-fn paper_canvas_view<'a>(tab: &'a super::document::DocumentTab) -> Element<'a, Message> {
-    let scene = &tab.scene;
-
-    // 2-D canvas for the paper sheet — paper entities, viewport borders, and
-    // inactive viewport projections are rendered as vector paths.  This lets
-    // users select/edit paper-space entities directly without entering MSPACE.
-    let paper_sheet = canvas(PaperCanvas::new(scene)).width(Fill).height(Fill);
-
-    if let Some(vp_handle) = scene.active_viewport {
-        let (canvas_w, canvas_h) = scene.selection.borrow().vp_size;
-        if let Some(rect) = scene.viewport_screen_rect(vp_handle, (canvas_w, canvas_h)) {
-            // Clamp to canvas bounds so Space widgets never get negative size.
-            let x = rect.x.max(0.0).min(canvas_w);
-            let y = rect.y.max(0.0).min(canvas_h);
-            let w = rect.width.clamp(1.0, canvas_w - x);
-            let h = rect.height.clamp(1.0, canvas_h - y);
-
-            let vp_widget = shader(PaperViewportPane::new(scene, vp_handle))
-                .width(iced::Length::Fixed(w))
-                .height(iced::Length::Fixed(h));
-
-            let positioned = column![
-                Space::new().height(iced::Length::Fixed(y)),
-                row![Space::new().width(iced::Length::Fixed(x)), vp_widget,],
-            ]
-            .width(Fill)
-            .height(Fill);
-
-            // Blue border drawn on top of the 3-D overlay so the viewport
-            // boundary is always visible even when the shader fills the area.
-            const VP_BORDER: Color = Color {
-                r: 0.18,
-                g: 0.52,
-                b: 0.95,
-                a: 1.0,
-            };
-            let border_frame = container(
-                Space::new()
-                    .width(iced::Length::Fixed(w))
-                    .height(iced::Length::Fixed(h)),
-            )
-            .style(move |_: &Theme| container::Style {
-                border: iced::Border {
-                    color: VP_BORDER,
-                    width: 2.0,
-                    radius: 0.0.into(),
-                },
-                ..Default::default()
-            });
-
-            let border_layer = column![
-                Space::new().height(iced::Length::Fixed(y)),
-                row![Space::new().width(iced::Length::Fixed(x)), border_frame,],
-            ]
-            .width(Fill)
-            .height(Fill);
-
-            // The render-mode picker and ViewCube hit area for the active
-            // viewport are layered in the main view stack (above the
-            // viewport mouse_area) so they're clickable — see
-            // `view()`. Here we only draw the sheet, the 3-D content, and
-            // the highlight border.
-            return stack![paper_sheet, positioned, border_layer]
-                .width(Fill)
-                .height(Fill)
-                .into();
-        }
-    }
-
-    paper_sheet.into()
 }
 
 // ── Document tab bar ───────────────────────────────────────────────────────

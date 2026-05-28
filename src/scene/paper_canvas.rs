@@ -4,9 +4,10 @@
 //! entities (title blocks, annotations, viewport borders) can be interacted
 //! with directly — no need to enter MSPACE just to click on them.
 //!
-//! When MSPACE is active, a separate `PaperViewportPane` shader widget is
-//! stacked on top of this canvas for the active viewport's 3-D content
-//! (see `view.rs::paper_canvas_view()`).
+//! A single unified `ViewportPane` shader widget is stacked on top of this
+//! canvas to render every content viewport's 3-D model content into its own
+//! scissor rectangle — outside those rectangles the shader does not paint,
+//! so the paper sheet drawn here shows through.
 
 use iced::widget::canvas;
 use iced::{mouse, Color, Point, Rectangle};

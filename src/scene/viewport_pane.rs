@@ -1,29 +1,23 @@
-use super::render::{CameraState, PaperViewportPrimitive, Primitive};
-use super::{Scene, VIEWCUBE_PX};
-use crate::app::Message;
-use acadrust::Handle;
+//! Unified GPU shader widget for both model and paper layouts.
+//!
+//! There is one `shader::Program` for the whole canvas. `Scene::build_viewports`
+//! decides what to render — model layout produces one viewport per tile
+//! (`active_viewports` iterates `model_tiles`), paper layout produces one per
+//! content viewport entity. Each one is drawn into its own scissor rect by a
+//! dedicated inner `Pipeline` (kept in the `MultiPipeline` outer).
+
+use super::render::{CameraState, Primitive};
+use super::Scene;
 use iced::widget::shader;
 use iced::{mouse, Event, Rectangle};
-
-// ── Mode ──────────────────────────────────────────────────────────────────
-
-pub enum ViewportPaneMode {
-    /// Full model space — fills whatever bounds Iced assigns.
-    Model,
-    /// Model-space content rendered through a specific viewport's 3-D camera.
-    #[allow(dead_code)]
-    Paper { handle: Handle },
-}
 
 // ── Widget struct ─────────────────────────────────────────────────────────
 
 pub struct ViewportPane<'a> {
     pub scene: &'a Scene,
-    pub mode: ViewportPaneMode,
     pub show_viewcube: bool,
-    /// Render mode for the **Model** layout view. Paper-space viewports
-    /// read their own `render_mode` field from the viewport entity, so
-    /// this value is ignored when `mode` is `Paper`.
+    /// Render mode applied to the Model layout's tiles. Paper-space content
+    /// viewports use the render mode stored on their own viewport entity.
     pub render_mode: acadrust::entities::ViewportRenderMode,
 }
 
@@ -35,100 +29,13 @@ impl<'a> ViewportPane<'a> {
     ) -> Self {
         Self {
             scene,
-            mode: ViewportPaneMode::Model,
             show_viewcube,
             render_mode,
         }
     }
-
-    /// One paper-space viewport: model content rendered through its own camera.
-    /// See [`ViewportPaneMode::Paper`] for why this is currently unused.
-    #[allow(dead_code)]
-    pub fn paper(scene: &'a Scene, handle: Handle) -> Self {
-        Self {
-            scene,
-            mode: ViewportPaneMode::Paper { handle },
-            show_viewcube: false,
-            render_mode: acadrust::entities::ViewportRenderMode::Wireframe2D,
-        }
-    }
 }
 
-// ── PaperViewportPane ─────────────────────────────────────────────────────
-//
-// A shader widget for the MSPACE active viewport.  Uses PaperViewportPrimitive
-// (and therefore PaperViewportPipeline) so it gets its own Iced storage entry,
-// separate from the ViewportPane/PaperSheet pipeline.
-
-pub struct PaperViewportPane<'a> {
-    pub scene: &'a Scene,
-    pub handle: Handle,
-}
-
-impl<'a> PaperViewportPane<'a> {
-    pub fn new(scene: &'a Scene, handle: Handle) -> Self {
-        Self { scene, handle }
-    }
-}
-
-impl<'a> shader::Program<Message> for PaperViewportPane<'a> {
-    type State = CameraState;
-    type Primitive = PaperViewportPrimitive;
-
-    fn draw(
-        &self,
-        state: &Self::State,
-        _cursor: mouse::Cursor,
-        bounds: Rectangle,
-    ) -> Self::Primitive {
-        self.scene
-            .build_active_viewport_primitive(self.handle, state.hover_region, bounds)
-    }
-
-    fn update(
-        &self,
-        state: &mut Self::State,
-        event: &Event,
-        bounds: Rectangle,
-        cursor: mouse::Cursor,
-    ) -> Option<iced::widget::Action<Message>> {
-        self.scene.update_viewcube_state(state, bounds, cursor);
-        // A left click on the ViewCube snaps the viewport's view. The
-        // hit-test runs in bounds-relative coordinates so it matches the
-        // gizmo drawn in this viewport's top-right corner. Clicks outside
-        // the cube return None, so they fall through to the paper sheet
-        // for normal selection / drawing.
-        if let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event {
-            if let Some(pos) = cursor.position_in(bounds) {
-                let rot = self.scene.active_view_rotation_mat();
-                if let Some(region) = super::hit_test(
-                    pos.x,
-                    pos.y,
-                    bounds.width,
-                    bounds.height,
-                    rot,
-                    VIEWCUBE_PX,
-                ) {
-                    return Some(iced::widget::Action::publish(Message::ViewCubeSnap(
-                        region,
-                    )));
-                }
-            }
-        }
-        None
-    }
-
-    fn mouse_interaction(
-        &self,
-        state: &Self::State,
-        _b: Rectangle,
-        _c: mouse::Cursor,
-    ) -> mouse::Interaction {
-        self.scene.viewcube_mouse_interaction(state)
-    }
-}
-
-// ── ViewportPane shader::Program impl ────────────────────────────────────
+// ── shader::Program impl ──────────────────────────────────────────────────
 
 impl<'a, Msg: std::fmt::Debug + Clone> shader::Program<Msg> for ViewportPane<'a> {
     type State = CameraState;
@@ -140,19 +47,8 @@ impl<'a, Msg: std::fmt::Debug + Clone> shader::Program<Msg> for ViewportPane<'a>
         _cursor: mouse::Cursor,
         bounds: Rectangle,
     ) -> Self::Primitive {
-        match &self.mode {
-            // Unified multi-viewport build: Model layout yields one
-            // full-window viewport (more once tiled); the camera, render
-            // mode and ViewCube come from `active_viewports`.
-            ViewportPaneMode::Model => {
-                self.scene
-                    .build_viewports(bounds, self.render_mode, state.hover_region)
-            }
-            ViewportPaneMode::Paper { handle } => {
-                self.scene
-                    .build_viewport_primitive(*handle, state.hover_region, bounds, false)
-            }
-        }
+        self.scene
+            .build_viewports(bounds, self.render_mode, state.hover_region)
     }
 
     fn update(
@@ -162,8 +58,11 @@ impl<'a, Msg: std::fmt::Debug + Clone> shader::Program<Msg> for ViewportPane<'a>
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<iced::widget::Action<Msg>> {
-        // ViewCube hover only makes sense in the full model-space view.
-        if matches!(self.mode, ViewportPaneMode::Model) && self.show_viewcube {
+        // ViewCube hover is also driven from the app-level CursorMoved /
+        // ViewportMove handlers (the cube hit-area overlay shadows this
+        // widget for those events). Keeping the call here gives a fallback
+        // path while the cursor is over the bare shader.
+        if self.show_viewcube {
             self.scene.update_viewcube_state(state, bounds, cursor);
         } else {
             state.hover_region = None;
@@ -178,7 +77,7 @@ impl<'a, Msg: std::fmt::Debug + Clone> shader::Program<Msg> for ViewportPane<'a>
         _b: Rectangle,
         _c: mouse::Cursor,
     ) -> mouse::Interaction {
-        if matches!(self.mode, ViewportPaneMode::Model) && self.show_viewcube {
+        if self.show_viewcube {
             self.scene.viewcube_mouse_interaction(state)
         } else {
             mouse::Interaction::default()

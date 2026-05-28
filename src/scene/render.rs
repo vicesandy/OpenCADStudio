@@ -16,59 +16,6 @@ use super::pipeline::MultiPipeline;
 use super::tess_util;
 use super::{HatchModel, ImageModel, MeshLodSet, Scene, Uniforms, ViewportInstance, WireModel};
 
-// ── PaperViewportPipeline / PaperViewportPrimitive ────────────────────────
-//
-// Newtype wrappers around MultiPipeline / Primitive so that the active-MSPACE
-// viewport widget gets its own Iced storage entry (keyed by TypeId of the
-// Pipeline type).  This prevents the shared-pipeline prepare() overwrite
-// that occurs when PaperSheet and the viewport widget both use the same type.
-
-/// Dedicated pipeline for the MSPACE active-viewport shader widget.
-pub struct PaperViewportPipeline(pub(super) MultiPipeline);
-
-impl iced::widget::shader::Pipeline for PaperViewportPipeline {
-    fn new(
-        device: &iced::wgpu::Device,
-        queue: &iced::wgpu::Queue,
-        format: iced::wgpu::TextureFormat,
-    ) -> Self {
-        Self(<MultiPipeline as iced::widget::shader::Pipeline>::new(
-            device, queue, format,
-        ))
-    }
-}
-
-/// Primitive returned by `PaperViewportPane`; delegates everything to the
-/// inner `Primitive` via the dedicated `PaperViewportPipeline`.
-#[derive(Debug)]
-pub struct PaperViewportPrimitive(pub(super) Primitive);
-
-impl shader::Primitive for PaperViewportPrimitive {
-    type Pipeline = PaperViewportPipeline;
-
-    fn prepare(
-        &self,
-        pipeline: &mut PaperViewportPipeline,
-        device: &iced::wgpu::Device,
-        queue: &iced::wgpu::Queue,
-        bounds: &Rectangle,
-        viewport: &Viewport,
-    ) {
-        self.0
-            .prepare(&mut pipeline.0, device, queue, bounds, viewport);
-    }
-
-    fn render(
-        &self,
-        pipeline: &PaperViewportPipeline,
-        encoder: &mut iced::wgpu::CommandEncoder,
-        target: &iced::wgpu::TextureView,
-        clip: &Rectangle<u32>,
-    ) {
-        self.0.render(&pipeline.0, encoder, target, clip);
-    }
-}
-
 // ── Camera hover state (shader::Program::State) ───────────────────────────
 
 #[derive(Clone, Default)]
@@ -77,15 +24,6 @@ pub struct CameraState {
 }
 
 // ── GPU primitive ─────────────────────────────────────────────────────────
-
-/// Normalized rectangle covering the whole widget — used for a single
-/// full-window viewport (Model view or active paper viewport).
-const FULL_VIEWPORT_RECT: Rectangle = Rectangle {
-    x: 0.0,
-    y: 0.0,
-    width: 1.0,
-    height: 1.0,
-};
 
 /// Everything needed to render one viewport: its geometry, camera, render
 /// mode, and the screen rectangle it occupies. The unified renderer carries
@@ -482,74 +420,6 @@ pub(crate) fn adapt_to_bg(color: [f32; 4], bg: [f32; 4]) -> [f32; 4] {
 // ── Primitive builder helpers (called by ViewportPane's shader::Program impl) ──
 
 impl Scene {
-    /// Build a full-scene Primitive for the model or paper view (the camera
-    /// stored in `self.camera` is used as-is).
-    pub(super) fn build_primitive(
-        &self,
-        hover_region: Option<usize>,
-        bounds: Rectangle,
-        show_viewcube: bool,
-        render_mode: acadrust::entities::ViewportRenderMode,
-    ) -> Primitive {
-        let flags = render_mode_flags(render_mode);
-        let view_wireframe = !flags.face3d_fill;
-        let cam = self.camera.borrow();
-        self.selection.borrow_mut().vp_size = (bounds.width, bounds.height);
-        // Record the active widget's aspect so view_world_aabb() can compute
-        // a correct culling rectangle before entity_wires_arc() runs.
-        if bounds.height > 0.0 {
-            self.set_render_aspect(bounds.width / bounds.height);
-            self.set_render_pixel_scale(bounds.width, bounds.height);
-        }
-
-        let entity_arc = self.entity_wires_arc();
-        let (face3d_wires, other_wires) = split_face3d_wires(&entity_arc, &self.document);
-        let all_wires = if self.interim_wire.is_none() && self.preview_wires.is_empty() {
-            Arc::new(other_wires)
-        } else {
-            let mut v = other_wires;
-            if let Some(iw) = &self.interim_wire {
-                v.push(iw.clone());
-            }
-            v.extend(self.preview_wires.iter().cloned());
-            Arc::new(v)
-        };
-
-        let bg_color = if self.current_layout == "Model" {
-            self.bg_color
-        } else {
-            self.paper_bg_color
-        };
-
-        let mut uniforms = Uniforms::new(&cam, bounds, self.document.header.lineweight_display);
-        uniforms.flat_shade = if flags.flat_shade { 1.0 } else { 0.0 };
-
-        let data = ViewportData {
-            wires: all_wires,
-            face3d_wires: Arc::new(face3d_wires),
-            hatches: self.hatch_models_arc(),
-            wipeout_hatches: self.wipeout_models_arc(),
-            images: self.images_arc(),
-            meshes: self.meshes_arc(),
-            uniforms,
-            cam_rotation: cam.view_rotation_mat(),
-            hover_region,
-            show_viewcube,
-            fill_mode: self.document.header.fill_mode,
-            view_wireframe,
-            mesh_fill: flags.mesh_fill,
-            show_3d_edges: flags.show_3d_edges,
-            hidden_line: flags.hidden_line,
-            geometry_epoch: self.geometry_epoch,
-            camera_generation: self.camera_generation,
-            screen_rect: FULL_VIEWPORT_RECT,
-        };
-        Primitive {
-            viewports: vec![data],
-            bg_color,
-        }
-    }
-
     /// Build the unified multi-viewport `Primitive` for the current layout.
     /// Model layout → one full-window viewport (more once tiled); paper
     /// layout → one viewport per floating content viewport. Each entry is
@@ -571,40 +441,20 @@ impl Scene {
         }
         let canvas = (bounds.width.max(1.0), bounds.height.max(1.0));
         let instances = self.active_viewports(canvas.0, canvas.1, model_render_mode);
-        let bg_color = if self.current_layout == "Model" {
-            self.bg_color
-        } else {
-            self.paper_bg_color
-        };
+        // Transparent clear — outside drawn geometry the resolve texture
+        // stays at alpha=0, so the alpha-blended blit reveals whatever the
+        // underlying widget painted (model layout: container bg; paper
+        // layout: PaperCanvas sheet — including inside content viewport
+        // rectangles).
+        let bg_color = [0.0, 0.0, 0.0, 0.0];
         let viewports: Vec<ViewportData> = instances
             .iter()
             .map(|inst| self.viewport_data_for(inst, canvas, hover_region))
             .collect();
-        Primitive {
-            viewports: if viewports.is_empty() {
-                // Paper layout with no content viewports still needs a
-                // (blank) pass so the widget clears to the sheet colour.
-                vec![self.viewport_data_for(
-                    &ViewportInstance {
-                        handle: acadrust::Handle::NULL,
-                        screen_rect: Rectangle {
-                            x: 0.0,
-                            y: 0.0,
-                            width: canvas.0,
-                            height: canvas.1,
-                        },
-                        camera: self.camera.borrow().clone(),
-                        render_mode: model_render_mode,
-                        active: false,
-                    },
-                    canvas,
-                    None,
-                )]
-            } else {
-                viewports
-            },
-            bg_color,
-        }
+        // Empty viewports → blit nothing. The widget container's
+        // background (model bg or the PaperCanvas widget below) stays
+        // visible. This happens in paper layouts without content viewports.
+        Primitive { viewports, bg_color }
     }
 
     /// Build one `ViewportData` from a `ViewportInstance`: gathers the
@@ -676,89 +526,6 @@ impl Scene {
             camera_generation: self.camera_generation,
             screen_rect,
         }
-    }
-
-    /// Build a Primitive that renders model-space content through a specific
-    /// paper-space viewport's camera, applying its layer-freeze list. The
-    /// render mode is read from the viewport entity itself (each paper-space
-    /// viewport carries its own visual style) — the model-space pick_list
-    /// only governs the Model layout.
-    pub(super) fn build_viewport_primitive(
-        &self,
-        vp_handle: Handle,
-        _hover_region: Option<usize>,
-        bounds: Rectangle,
-        show_viewcube: bool,
-    ) -> Primitive {
-        // See `build_viewports` — the cube hit-area overlay shadows the
-        // shader, so hover is sourced from the scene cell.
-        let hover_region = self.viewcube_hover.get();
-        let render_mode = match self.document.get_entity(vp_handle) {
-            Some(EntityType::Viewport(vp)) => vp.render_mode,
-            _ => acadrust::entities::ViewportRenderMode::Wireframe2D,
-        };
-        let flags = render_mode_flags(render_mode);
-        let view_wireframe = !flags.face3d_fill;
-        let cam = match self.camera_for_viewport(vp_handle) {
-            Some(c) => c,
-            None => return self.build_primitive(hover_region, bounds, false, render_mode),
-        };
-
-        let base_arc = self.model_wires_for_viewport_arc(vp_handle);
-        let (face3d_wires, other_wires) = split_face3d_wires(&base_arc, &self.document);
-        let all_wires = if self.interim_wire.is_none() && self.preview_wires.is_empty() {
-            Arc::new(other_wires)
-        } else {
-            let mut v = other_wires;
-            if let Some(iw) = &self.interim_wire {
-                v.push(iw.clone());
-            }
-            v.extend(self.preview_wires.iter().cloned());
-            Arc::new(v)
-        };
-
-        let mut uniforms = Uniforms::new(&cam, bounds, self.document.header.lineweight_display);
-        uniforms.flat_shade = if flags.flat_shade { 1.0 } else { 0.0 };
-
-        let data = ViewportData {
-            wires: all_wires,
-            face3d_wires: Arc::new(face3d_wires),
-            hatches: self.hatch_models_arc(),
-            wipeout_hatches: self.wipeout_models_arc(),
-            images: self.images_arc(),
-            meshes: self.meshes_arc(),
-            uniforms,
-            cam_rotation: cam.view_rotation_mat(),
-            hover_region,
-            show_viewcube,
-            fill_mode: self.document.header.fill_mode,
-            view_wireframe,
-            mesh_fill: flags.mesh_fill,
-            show_3d_edges: flags.show_3d_edges,
-            hidden_line: flags.hidden_line,
-            geometry_epoch: self.geometry_epoch,
-            camera_generation: self.camera_generation,
-            screen_rect: FULL_VIEWPORT_RECT,
-        };
-        Primitive {
-            viewports: vec![data],
-            bg_color: self.bg_color,
-        }
-    }
-
-    /// Wrap `build_viewport_primitive()` in `PaperViewportPrimitive` for use
-    /// by `PaperViewportPane`, which needs its own dedicated pipeline type.
-    pub(super) fn build_active_viewport_primitive(
-        &self,
-        vp_handle: Handle,
-        hover_region: Option<usize>,
-        bounds: Rectangle,
-    ) -> PaperViewportPrimitive {
-        // The active (double-clicked) viewport shows the ViewCube gizmo,
-        // mirroring the model-space view.
-        PaperViewportPrimitive(
-            self.build_viewport_primitive(vp_handle, hover_region, bounds, true),
-        )
     }
 
     /// Update viewcube hover state from cursor position within `bounds`.
