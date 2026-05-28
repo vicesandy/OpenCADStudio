@@ -168,6 +168,12 @@ pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
         }
     }
 
+    // Default bg adaptation target at load: the model background (paper
+    // bg is only relevant after the user enters a paper layout, and
+    // `synced_hatch_models` re-runs `render_style` per-frame anyway so
+    // the per-layout adaptation kicks in later regardless).
+    const LOAD_BG: [f32; 4] = [0.11, 0.11, 0.11, 1.0];
+
     // hatches
     let hatches: HashMap<Handle, HatchModel> = hatch_handles
         .par_iter()
@@ -179,15 +185,11 @@ pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
             } else {
                 [0.0; 3]
             };
+            let (raw, ..) = render::render_style_for(doc, e);
+            let color = render::adapt_to_bg(raw, LOAD_BG);
             let model = match e {
-                EntityType::Hatch(dxf) => {
-                    let color = tess_util::aci_to_rgba(&dxf.common.color);
-                    Scene::hatch_model_from_dxf(dxf, color, offset)
-                }
-                EntityType::Solid(solid) => {
-                    let color = tess_util::aci_to_rgba(&solid.common.color);
-                    Some(Scene::solid_hatch_model(solid, color, offset))
-                }
+                EntityType::Hatch(dxf) => Scene::hatch_model_from_dxf(dxf, color, offset),
+                EntityType::Solid(solid) => Some(Scene::solid_hatch_model(solid, color, offset)),
                 _ => None,
             };
             model.map(|m| (handle, m))
@@ -214,7 +216,8 @@ pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
         .par_iter()
         .filter_map(|&handle| {
             let e = doc.get_entity(handle)?;
-            let color = tess_util::aci_to_rgba(&e.common().color);
+            let (raw, ..) = render::render_style_for(doc, e);
+            let color = render::adapt_to_bg(raw, LOAD_BG);
             crate::entities::solid3d::tessellate_volume(e, color, facet_res)
                 .map(|m| (handle, offset_mesh_lod_set(m, world_offset)))
         })
@@ -820,13 +823,40 @@ impl Scene {
         self.geometry_epoch = GEOMETRY_EPOCH.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Re-evaluate every cached mesh's color through `render_style` so a
+    /// `BACKGROUND` change picks up the new `adapt_to_bg` result without
+    /// re-tessellating ACIS geometry. Caller must bump `geometry_epoch`
+    /// afterwards so the GPU re-uploads the now-updated colour data.
+    pub fn recolor_meshes(&mut self) {
+        // Cache colour lookups by handle to avoid borrowing the document
+        // re-entrantly through `render_style` inside a `&mut self` loop.
+        let colors: HashMap<Handle, [f32; 4]> = self
+            .meshes
+            .keys()
+            .filter_map(|&h| {
+                self.document
+                    .get_entity(h)
+                    .map(|e| (h, self.render_style(e).0))
+            })
+            .collect();
+        for (h, set) in self.meshes.iter_mut() {
+            if let Some(&c) = colors.get(h) {
+                for lod in &mut set.lods {
+                    lod.color = c;
+                }
+            }
+        }
+    }
+
     /// Switch the active layout. Bumps `geometry_epoch` so the wire cache
     /// re-tessellates — `render_style`'s `adapt_to_bg` picks the model or
     /// paper background depending on `current_layout`, so cached wires
     /// from the previous layout would be coloured against the wrong bg.
+    /// Also runs `recolor_meshes` so ACIS mesh colour tracks the new bg.
     pub fn set_current_layout(&mut self, name: String) {
         if self.current_layout != name {
             self.current_layout = name;
+            self.recolor_meshes();
             self.bump_geometry();
         }
     }
@@ -3502,14 +3532,16 @@ impl Scene {
     /// `Solid3D` entity is represented in the mesh cache.
     pub fn populate_meshes_from_document(&mut self) {
         self.meshes.clear();
-        // Collect all ACIS-bearing entities with their color resolved now,
-        // so the parallel phase only sees owned data.
+        // Resolve color through `render_style` so the same bg adaptation
+        // wires use kicks in (pure black on dark bg → white, pure white
+        // on light bg → black). Without this, ACIS meshes ignore
+        // `adapt_to_bg` and stay invisible against matching bg colours.
         let entries: Vec<(Handle, EntityType, [f32; 4])> = self
             .document
             .entities()
             .filter_map(|e| match e {
                 EntityType::Solid3D(_) | EntityType::Region(_) | EntityType::Body(_) => {
-                    let color = tess_util::aci_to_rgba(&e.common().color);
+                    let color = self.render_style(e).0;
                     Some((e.common().handle, e.clone(), color))
                 }
                 _ => None,
