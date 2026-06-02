@@ -4208,6 +4208,12 @@ impl OpenCADStudio {
             Message::LayoutSwitch(name) => {
                 let i = self.active_tab;
                 let going_to_paper = name != "Model";
+                // Persist the camera of the layout we're leaving BEFORE switching
+                // so returning to it restores where the user left off (the
+                // periodic sync only fires on a tick, which may not have run
+                // since the last pan/zoom).
+                self.tabs[i].scene.sync_camera_to_document();
+                self.tabs[i].last_synced_camera_gen = self.tabs[i].scene.camera_generation;
                 // Cancel any pending rename/context-menu and active viewport when switching.
                 self.layout_rename_state = None;
                 self.layout_context_menu = None;
