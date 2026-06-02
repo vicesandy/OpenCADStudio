@@ -4254,6 +4254,9 @@ impl OpenCADStudio {
                             }
                         }
                         self.tabs[i].scene.current_layout = new_name.clone();
+                        // Safety net — `add_layout` already creates the overall
+                        // sheet viewport; this covers any path that doesn't.
+                        self.tabs[i].scene.ensure_sheet_viewport(&new_name);
                         self.tabs[i].scene.deselect_all();
                         self.tabs[i].scene.fit_all();
                         if let Some(idx) = self.ribbon.layout_module_index() {

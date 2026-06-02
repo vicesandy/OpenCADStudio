@@ -935,6 +935,85 @@ impl Scene {
         }).unwrap_or(Handle::NULL)
     }
 
+    /// Guarantee that a paper layout has its full-screen overall (`id == 1`)
+    /// sheet viewport. AutoCAD always writes one, and `add_layout` creates it,
+    /// but this is a safety net for layouts that arrive without it. The sheet
+    /// viewport is the authoritative paper-space view and the canvas every
+    /// floating viewport overlays.
+    pub fn ensure_sheet_viewport(&mut self, layout_name: &str) {
+        if layout_name == "Model" {
+            return;
+        }
+        // Locate the layout: its object handle, block-record handle, current
+        // sheet-viewport link, and paper limits.
+        let info = self.document.objects.iter().find_map(|(h, obj)| {
+            if let ObjectType::Layout(l) = obj {
+                if l.name == layout_name {
+                    return Some((*h, l.block_record, l.viewport, l.min_limits, l.max_limits));
+                }
+            }
+            None
+        });
+        let Some((layout_handle, block_record, cur_vp, min_lim, max_lim)) = info else {
+            return;
+        };
+        if block_record.is_null() {
+            return;
+        }
+
+        // Already present? Accept either the linked viewport handle or any
+        // `id == 1` viewport owned by the layout block.
+        let has_sheet = self.document.entities().any(|e| {
+            matches!(e, EntityType::Viewport(vp)
+                if vp.common.owner_handle == block_record
+                    && (vp.id == 1 || vp.common.handle == cur_vp))
+        });
+        if has_sheet {
+            // Keep the layout's link in sync if it was missing.
+            if !cur_vp.is_valid() {
+                let h = self.document.entities().find_map(|e| match e {
+                    EntityType::Viewport(vp)
+                        if vp.common.owner_handle == block_record && vp.id == 1 =>
+                    {
+                        Some(vp.common.handle)
+                    }
+                    _ => None,
+                });
+                if let Some(h) = h {
+                    if let Some(ObjectType::Layout(l)) =
+                        self.document.objects.get_mut(&layout_handle)
+                    {
+                        l.viewport = h;
+                    }
+                }
+            }
+            return;
+        }
+
+        // Create the full-screen overall viewport covering the paper limits.
+        let pw = (max_lim.0 - min_lim.0).abs().max(1.0);
+        let ph = (max_lim.1 - min_lim.1).abs().max(1.0);
+        let mut vp = acadrust::entities::Viewport::new();
+        vp.id = 1;
+        vp.status = acadrust::entities::ViewportStatusFlags::default_on();
+        // Paper plane is (x, z) with y = 0 (same convention MVIEW uses).
+        vp.center = acadrust::types::Vector3::new(
+            (min_lim.0 + max_lim.0) / 2.0,
+            0.0,
+            (min_lim.1 + max_lim.1) / 2.0,
+        );
+        vp.width = pw;
+        vp.height = ph;
+        if let Ok(handle) =
+            self.document
+                .add_entity_to_layout(EntityType::Viewport(vp), layout_name)
+        {
+            if let Some(ObjectType::Layout(l)) = self.document.objects.get_mut(&layout_handle) {
+                l.viewport = handle;
+            }
+        }
+    }
+
     fn is_content_viewport_in_layout(
         &self,
         vp: &acadrust::entities::Viewport,
@@ -4809,44 +4888,45 @@ impl Scene {
 
     /// Set the paper-space camera from the sheet viewport's stored view.
     /// Returns true if a valid sheet viewport was found and the camera was set.
+    ///
+    /// The sheet viewport entity is the authoritative paper-space view (it
+    /// round-trips through both the DXF and DWG writers). An older
+    /// `OpenCADStudio_Camera_<layout>` named View is honoured only as a
+    /// backward-compatible fallback for files saved under the previous scheme.
     fn apply_sheet_viewport_camera(&mut self) -> bool {
-        // Prefer our named View entry — survives DWG save without being overridden.
-        let view_name = format!("OpenCADStudio_Camera_{}", self.current_layout);
-        let saved_view = self
-            .document
-            .views
-            .iter()
-            .find(|v| v.name == view_name)
-            .cloned();
-        if let Some(view) = saved_view {
-            return self.apply_camera_from_view_entry(&view, false);
-        }
-
         let layout_block = self.current_layout_block_handle();
-        if layout_block.is_null() {
-            return false;
-        }
-
-        let sheet_vp = self
-            .document
-            .entities()
-            .filter_map(|e| {
-                if let EntityType::Viewport(vp) = e {
-                    Some(vp)
-                } else {
-                    None
-                }
-            })
-.find(|vp| !self.is_content_viewport_in_layout(vp, layout_block));
-
-        let vp = match sheet_vp {
-            Some(v) => v,
-            None => return false,
+        let sheet_vp = if layout_block.is_null() {
+            None
+        } else {
+            self.document
+                .entities()
+                .filter_map(|e| {
+                    if let EntityType::Viewport(vp) = e {
+                        Some(vp)
+                    } else {
+                        None
+                    }
+                })
+                .find(|vp| {
+                    vp.common.owner_handle == layout_block
+                        && !self.is_content_viewport_in_layout(vp, layout_block)
+                })
+                .cloned()
         };
 
-        if vp.view_height.abs() < 1e-9 {
-            return false;
-        }
+        let vp = match sheet_vp {
+            Some(v) if v.view_height.abs() >= 1e-9 => v,
+            _ => {
+                // Back-compat: files OCS saved with the named-View side-channel.
+                let view_name = format!("OpenCADStudio_Camera_{}", self.current_layout);
+                let fallback =
+                    self.document.views.iter().find(|v| v.name == view_name).cloned();
+                if let Some(view) = fallback {
+                    return self.apply_camera_from_view_entry(&view, false);
+                }
+                return false;
+            }
+        };
 
         let vd = glam::Vec3::new(
             vp.view_direction.x as f32,
@@ -4938,9 +5018,9 @@ impl Scene {
                 y: cam.target.y as f64,
                 z: cam.target.z as f64,
             };
-            let view_name = format!("OpenCADStudio_Camera_{}", self.current_layout);
 
-            // Write back to the sheet viewport entity.
+            // The sheet viewport entity is the authoritative paper-space view;
+            // it round-trips natively, so no named-View side-channel is needed.
             let layout_block = self.current_layout_block_handle();
             if !layout_block.is_null() {
                 let sheet_handle = self
@@ -4967,9 +5047,6 @@ impl Scene {
                     }
                 }
             }
-
-            // Also write to View table — survives DWG save without override.
-            self.write_camera_view_entry(&view_name, target_wcs, vd3, view_height);
             true
         }
     }
@@ -5006,6 +5083,10 @@ impl Scene {
             // Single-tile files fall through to the *Active branch.
             self.restore_model_tiles_from_vports() || self.apply_active_vport_camera()
         } else {
+            // Every paper layout has a full-screen sheet viewport that holds
+            // its view; create one if a loaded file lacks it.
+            let layout = self.current_layout.clone();
+            self.ensure_sheet_viewport(&layout);
             self.apply_sheet_viewport_camera()
         };
         if !restored {
@@ -7012,3 +7093,4 @@ fn is_unindexable_entity(e: &acadrust::EntityType) -> bool {
         E::Insert(_) | E::Viewport(_) | E::Block(_) | E::BlockEnd(_)
     )
 }
+
