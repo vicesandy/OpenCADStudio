@@ -4147,10 +4147,10 @@ impl OpenCADStudio {
                 let parts: Vec<&str> = rest.splitn(3, ' ').collect();
                 let sub = parts.get(0).map(|s| s.to_uppercase()).unwrap_or_default();
                 match sub.as_str() {
-                    "DIALOG" | "UI" => {
+                    "" | "DIALOG" | "UI" => {
                         return Task::done(Message::TextStyleDialogOpen);
                     }
-                    "" | "LIST" | "?" => {
+                    "LIST" | "?" => {
                         let styles: Vec<String> = self.tabs[i]
                             .scene
                             .document
