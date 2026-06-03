@@ -309,6 +309,14 @@ pub(super) struct OpenCADStudio {
     mls_default_text: String,
     mls_line_color: String,
     mls_text_color: String,
+    mls_description: String,
+    mls_line_weight: String,
+    mls_align_space: String,
+    mls_block_color: String,
+    mls_block_rotation: String,
+    mls_block_scale_x: String,
+    mls_block_scale_y: String,
+    mls_block_scale_z: String,
 
     // ── TableStyle Dialog ─────────────────────────────────────────────────
     tablestyle_selected: String,
@@ -448,6 +456,7 @@ pub(super) struct OpenCADStudio {
     ds_dimfrac: String,
     ds_dimaunit: String,
     ds_dimadec: String,
+    ds_dimunit: String,
     ds_dimazin: String,
     // Alternate units
     ds_dimalt: bool,
@@ -533,6 +542,7 @@ pub enum DsField {
     Dimfrac,
     Dimaunit,
     Dimadec,
+    Dimunit,
     Dimazin,
     Dimalt,
     Dimaltf,
@@ -1058,6 +1068,12 @@ pub enum Message {
         field: &'static str,
         value: String,
     },
+    /// Set an Option<Handle> field (linetype / arrowhead / text style / block)
+    /// from a dropdown of record names ("None" clears it).
+    MLeaderStyleSetHandle {
+        field: &'static str,
+        value: String,
+    },
     MLeaderStyleApply,
     // ── DimStyle Dialog ───────────────────────────────────────────────────
     DimStyleDialogOpen,
@@ -1251,6 +1267,14 @@ impl OpenCADStudio {
             mls_default_text: String::new(),
             mls_line_color: String::new(),
             mls_text_color: String::new(),
+            mls_description: String::new(),
+            mls_line_weight: String::new(),
+            mls_align_space: String::new(),
+            mls_block_color: String::new(),
+            mls_block_rotation: String::new(),
+            mls_block_scale_x: String::new(),
+            mls_block_scale_y: String::new(),
+            mls_block_scale_z: String::new(),
             // DimStyle dialog
             dimstyle_selected: "Standard".to_string(),
             dimstyle_tab: 0,
@@ -1311,6 +1335,7 @@ impl OpenCADStudio {
             ds_dimfrac: "0".to_string(),
             ds_dimaunit: "0".to_string(),
             ds_dimadec: "0".to_string(),
+            ds_dimunit: "2".to_string(),
             ds_dimazin: "0".to_string(),
             ds_dimalt: false,
             ds_dimaltf: "25.4".to_string(),

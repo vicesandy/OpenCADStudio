@@ -6277,6 +6277,14 @@ impl OpenCADStudio {
                     "default_text" => self.mls_default_text = value,
                     "line_color" => self.mls_line_color = value,
                     "text_color" => self.mls_text_color = value,
+                    "description" => self.mls_description = value,
+                    "line_weight" => self.mls_line_weight = value,
+                    "align_space" => self.mls_align_space = value,
+                    "block_color" => self.mls_block_color = value,
+                    "block_rotation" => self.mls_block_rotation = value,
+                    "block_scale_x" => self.mls_block_scale_x = value,
+                    "block_scale_y" => self.mls_block_scale_y = value,
+                    "block_scale_z" => self.mls_block_scale_z = value,
                     _ => {}
                 }
                 Task::none()
@@ -6290,6 +6298,10 @@ impl OpenCADStudio {
                         "text_frame" => s.text_frame = !s.text_frame,
                         "text_always_left" => s.text_always_left = !s.text_always_left,
                         "annotative" => s.is_annotative = !s.is_annotative,
+                        "enable_block_scale" => s.enable_block_scale = !s.enable_block_scale,
+                        "enable_block_rotation" => {
+                            s.enable_block_rotation = !s.enable_block_rotation
+                        }
                         _ => {}
                     }
                     self.push_undo_snapshot(i, "MLEADERSTYLE EDIT");
@@ -6300,8 +6312,32 @@ impl OpenCADStudio {
             }
             Message::MLeaderStyleSetEnum { field, value } => {
                 use acadrust::objects::{
-                    LeaderContentType, MultiLeaderPathType, TextAlignmentType, TextAngleType,
+                    BlockContentConnectionType, LeaderContentType, LeaderDrawOrderType,
+                    MultiLeaderDrawOrderType, MultiLeaderPathType, TextAlignmentType,
+                    TextAngleType, TextAttachmentDirectionType, TextAttachmentType,
                 };
+                // Parse a TextAttachmentType from its debug name.
+                fn parse_att(v: &str) -> TextAttachmentType {
+                    match v {
+                        "TopOfTopLine" => TextAttachmentType::TopOfTopLine,
+                        "MiddleOfText" => TextAttachmentType::MiddleOfText,
+                        "MiddleOfBottomLine" => TextAttachmentType::MiddleOfBottomLine,
+                        "BottomOfBottomLine" => TextAttachmentType::BottomOfBottomLine,
+                        "BottomLine" => TextAttachmentType::BottomLine,
+                        "BottomOfTopLineUnderlineBottomLine" => {
+                            TextAttachmentType::BottomOfTopLineUnderlineBottomLine
+                        }
+                        "BottomOfTopLineUnderlineTopLine" => {
+                            TextAttachmentType::BottomOfTopLineUnderlineTopLine
+                        }
+                        "BottomOfTopLineUnderlineAll" => {
+                            TextAttachmentType::BottomOfTopLineUnderlineAll
+                        }
+                        "CenterOfText" => TextAttachmentType::CenterOfText,
+                        "CenterOfTextOverline" => TextAttachmentType::CenterOfTextOverline,
+                        _ => TextAttachmentType::MiddleOfTopLine,
+                    }
+                }
                 let i = self.active_tab;
                 if let Some(s) = self.mleaderstyle_mut(i) {
                     match field {
@@ -6336,6 +6372,73 @@ impl OpenCADStudio {
                                 _ => TextAlignmentType::Left,
                             };
                         }
+                        "text_left_attachment" => s.text_left_attachment = parse_att(&value),
+                        "text_right_attachment" => s.text_right_attachment = parse_att(&value),
+                        "text_top_attachment" => s.text_top_attachment = parse_att(&value),
+                        "text_bottom_attachment" => s.text_bottom_attachment = parse_att(&value),
+                        "text_attachment_direction" => {
+                            s.text_attachment_direction = match value.as_str() {
+                                "Vertical" => TextAttachmentDirectionType::Vertical,
+                                _ => TextAttachmentDirectionType::Horizontal,
+                            };
+                        }
+                        "block_content_connection" => {
+                            s.block_content_connection = match value.as_str() {
+                                "BasePoint" => BlockContentConnectionType::BasePoint,
+                                _ => BlockContentConnectionType::BlockExtents,
+                            };
+                        }
+                        "leader_draw_order" => {
+                            s.leader_draw_order = match value.as_str() {
+                                "LeaderTailFirst" => LeaderDrawOrderType::LeaderTailFirst,
+                                _ => LeaderDrawOrderType::LeaderHeadFirst,
+                            };
+                        }
+                        "multileader_draw_order" => {
+                            s.multileader_draw_order = match value.as_str() {
+                                "LeaderFirst" => MultiLeaderDrawOrderType::LeaderFirst,
+                                _ => MultiLeaderDrawOrderType::ContentFirst,
+                            };
+                        }
+                        _ => {}
+                    }
+                    self.push_undo_snapshot(i, "MLEADERSTYLE EDIT");
+                    self.tabs[i].dirty = true;
+                    self.tabs[i].scene.bump_geometry();
+                }
+                Task::none()
+            }
+            Message::MLeaderStyleSetHandle { field, value } => {
+                let i = self.active_tab;
+                let doc = &self.tabs[i].scene.document;
+                let handle: Option<acadrust::types::Handle> = if value == "None" {
+                    None
+                } else {
+                    match field {
+                        "line_type_handle" => doc
+                            .line_types
+                            .iter()
+                            .find(|lt| lt.name == value)
+                            .map(|lt| lt.handle),
+                        "text_style_handle" => doc
+                            .text_styles
+                            .iter()
+                            .find(|t| t.name == value)
+                            .map(|t| t.handle),
+                        "arrowhead_handle" | "block_content_handle" => doc
+                            .block_records
+                            .iter()
+                            .find(|b| b.name == value)
+                            .map(|b| b.handle),
+                        _ => None,
+                    }
+                };
+                if let Some(s) = self.mleaderstyle_mut(i) {
+                    match field {
+                        "line_type_handle" => s.line_type_handle = handle,
+                        "text_style_handle" => s.text_style_handle = handle,
+                        "arrowhead_handle" => s.arrowhead_handle = handle,
+                        "block_content_handle" => s.block_content_handle = handle,
                         _ => {}
                     }
                     self.push_undo_snapshot(i, "MLEADERSTYLE EDIT");
@@ -6373,6 +6476,14 @@ impl OpenCADStudio {
                     self.mls_line_color.parse::<i16>().ok(),
                     self.mls_text_color.parse::<i16>().ok(),
                 );
+                let desc = self.mls_description.clone();
+                let lw = self.mls_line_weight.parse::<i16>().ok();
+                let align = self.mls_align_space.parse::<f64>().ok();
+                let bclr = self.mls_block_color.parse::<i16>().ok();
+                let brot = self.mls_block_rotation.parse::<f64>().ok();
+                let bsx = self.mls_block_scale_x.parse::<f64>().ok();
+                let bsy = self.mls_block_scale_y.parse::<f64>().ok();
+                let bsz = self.mls_block_scale_z.parse::<f64>().ok();
                 if let Some(s) = self.mleaderstyle_mut(i) {
                     if let Some(v) = ld {
                         s.landing_distance = v;
@@ -6407,6 +6518,28 @@ impl OpenCADStudio {
                     }
                     if let Some(v) = tc {
                         s.text_color = acadrust::types::Color::from_index(v);
+                    }
+                    s.description = desc;
+                    if let Some(v) = lw {
+                        s.line_weight = acadrust::types::LineWeight::from_value(v);
+                    }
+                    if let Some(v) = align {
+                        s.align_space = v;
+                    }
+                    if let Some(v) = bclr {
+                        s.block_content_color = acadrust::types::Color::from_index(v);
+                    }
+                    if let Some(v) = brot {
+                        s.block_content_rotation = v;
+                    }
+                    if let Some(v) = bsx {
+                        s.block_content_scale_x = v;
+                    }
+                    if let Some(v) = bsy {
+                        s.block_content_scale_y = v;
+                    }
+                    if let Some(v) = bsz {
+                        s.block_content_scale_z = v;
                     }
                     self.push_undo_snapshot(i, "MLEADERSTYLE EDIT");
                     self.tabs[i].dirty = true;
@@ -7067,6 +7200,18 @@ impl OpenCADStudio {
             .index()
             .map(|c| c.to_string())
             .unwrap_or_default();
+        self.mls_description = s.description.clone();
+        self.mls_line_weight = s.line_weight.value().to_string();
+        self.mls_align_space = format!("{:.4}", s.align_space);
+        self.mls_block_color = s
+            .block_content_color
+            .index()
+            .map(|c| c.to_string())
+            .unwrap_or_default();
+        self.mls_block_rotation = format!("{:.4}", s.block_content_rotation);
+        self.mls_block_scale_x = format!("{:.4}", s.block_content_scale_x);
+        self.mls_block_scale_y = format!("{:.4}", s.block_content_scale_y);
+        self.mls_block_scale_z = format!("{:.4}", s.block_content_scale_z);
     }
 
     /// Populate all edit buffers from the currently selected dim style.
@@ -7132,6 +7277,7 @@ impl OpenCADStudio {
         self.ds_dimfrac = format!("{}", ds.dimfrac);
         self.ds_dimaunit = format!("{}", ds.dimaunit);
         self.ds_dimadec = format!("{}", ds.dimadec);
+        self.ds_dimunit = format!("{}", ds.dimunit);
         self.ds_dimazin = format!("{}", ds.dimazin);
         self.ds_dimalt = ds.dimalt;
         self.ds_dimaltf = format!("{}", ds.dimaltf);
@@ -7216,6 +7362,7 @@ impl OpenCADStudio {
         set_i16!(dimfrac, self.ds_dimfrac);
         set_i16!(dimaunit, self.ds_dimaunit);
         set_i16!(dimadec, self.ds_dimadec);
+        set_i16!(dimunit, self.ds_dimunit);
         set_i16!(dimazin, self.ds_dimazin);
         set_f64!(dimaltf, self.ds_dimaltf);
         set_i16!(dimaltd, self.ds_dimaltd);
@@ -7288,6 +7435,7 @@ impl OpenCADStudio {
             Dimfrac => self.ds_dimfrac = val,
             Dimaunit => self.ds_dimaunit = val,
             Dimadec => self.ds_dimadec = val,
+            Dimunit => self.ds_dimunit = val,
             Dimazin => self.ds_dimazin = val,
             Dimaltf => self.ds_dimaltf = val,
             Dimaltd => self.ds_dimaltd = val,

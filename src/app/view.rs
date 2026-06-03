@@ -186,6 +186,56 @@ impl OpenCADStudio {
                     None
                 }
             });
+            let doc = &tab.scene.document;
+            let mut block_opts: Vec<String> = vec!["None".to_string()];
+            block_opts.extend(doc.block_records.iter().map(|b| b.name.clone()));
+            let mut lt_opts: Vec<String> = vec!["None".to_string()];
+            lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
+            let mut textstyle_opts: Vec<String> = vec!["None".to_string()];
+            textstyle_opts.extend(doc.text_styles.iter().map(|t| t.name.clone()));
+            let opt_block = |h: Option<acadrust::types::Handle>| -> String {
+                match h {
+                    Some(h) => doc
+                        .block_records
+                        .iter()
+                        .find(|b| b.handle == h)
+                        .map(|b| b.name.clone())
+                        .unwrap_or_else(|| "None".to_string()),
+                    None => "None".to_string(),
+                }
+            };
+            let opt_lt = |h: Option<acadrust::types::Handle>| -> String {
+                match h {
+                    Some(h) => doc
+                        .line_types
+                        .iter()
+                        .find(|lt| lt.handle == h)
+                        .map(|lt| lt.name.clone())
+                        .unwrap_or_else(|| "None".to_string()),
+                    None => "None".to_string(),
+                }
+            };
+            let opt_ts = |h: Option<acadrust::types::Handle>| -> String {
+                match h {
+                    Some(h) => doc
+                        .text_styles
+                        .iter()
+                        .find(|t| t.handle == h)
+                        .map(|t| t.name.clone())
+                        .unwrap_or_else(|| "None".to_string()),
+                    None => "None".to_string(),
+                }
+            };
+            let (line_type_name, arrowhead_name, text_style_name, block_content_name) =
+                match selected_style {
+                    Some(s) => (
+                        opt_lt(s.line_type_handle),
+                        opt_block(s.arrowhead_handle),
+                        opt_ts(s.text_style_handle),
+                        opt_block(s.block_content_handle),
+                    ),
+                    None => Default::default(),
+                };
             return crate::ui::mleaderstyle::view_window(crate::ui::mleaderstyle::MLeaderStyleView {
                 styles,
                 selected: &self.mleaderstyle_selected,
@@ -203,6 +253,21 @@ impl OpenCADStudio {
                 default_text: &self.mls_default_text,
                 line_color: &self.mls_line_color,
                 text_color: &self.mls_text_color,
+                description: &self.mls_description,
+                line_weight: &self.mls_line_weight,
+                align_space: &self.mls_align_space,
+                block_color: &self.mls_block_color,
+                block_rotation: &self.mls_block_rotation,
+                block_scale_x: &self.mls_block_scale_x,
+                block_scale_y: &self.mls_block_scale_y,
+                block_scale_z: &self.mls_block_scale_z,
+                block_opts,
+                lt_opts,
+                textstyle_opts,
+                line_type_name,
+                arrowhead_name,
+                text_style_name,
+                block_content_name,
             });
         }
         if Some(window_id) == self.layout_manager_window {
@@ -346,6 +411,7 @@ impl OpenCADStudio {
                     dimfrac: &self.ds_dimfrac,
                     dimaunit: &self.ds_dimaunit,
                     dimadec: &self.ds_dimadec,
+                    dimunit: &self.ds_dimunit,
                     dimazin: &self.ds_dimazin,
                     dimalt: self.ds_dimalt,
                     dimaltf: &self.ds_dimaltf,
