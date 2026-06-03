@@ -328,6 +328,7 @@ pub fn view_window<'a>(
             .spacing(6)
             .padding([12, 12]),
         )
+        .width(Fill)
         .height(Fill)
         .into()
     } else {

@@ -622,12 +622,17 @@ pub fn view_window<'a>(
     };
 
     // ── Right panel: tabs + scrollable content ────────────────────────────
+    // The scrollable itself fills the full width so its scrollbar sits flush
+    // against the window's right edge; horizontal insets live on the inner
+    // content container instead of the panel padding.
     let right_panel = container(
         column![
             text(format!("Editing: {selected}")).size(11).color(DIM),
             tabs,
             hdivider(),
-            scrollable(container(tab_content).padding([12, 12])).height(Fill),
+            scrollable(container(tab_content).padding([12, 12]).width(Fill))
+                .width(Fill)
+                .height(Fill),
         ]
         .spacing(6)
         .height(Fill),
@@ -636,7 +641,7 @@ pub fn view_window<'a>(
     .width(Fill)
     .padding(iced::Padding {
         top: 12.0,
-        right: 12.0,
+        right: 0.0,
         bottom: 12.0,
         left: 0.0,
     });
