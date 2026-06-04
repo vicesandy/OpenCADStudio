@@ -767,6 +767,8 @@ pub enum Message {
     ToggleSelectionCycling,
     /// Add an object from the selection-cycling list box to the selection.
     CycleSelect(acadrust::Handle),
+    /// Preview (highlight) a cycling-list row's object, or clear with `None`.
+    CycleHover(Option<acadrust::Handle>),
     /// Dismiss the selection-cycling list box without picking.
     CycleCancel,
     /// Toggle the selection-filter type picker open/closed.

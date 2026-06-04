@@ -15,7 +15,7 @@ pub fn cycle_popup_overlay(
 ) -> Element<'static, Message> {
     let rows: Vec<Element<'static, Message>> = items
         .into_iter()
-        .map(|(handle, label)| item_row(label, Message::CycleSelect(handle)))
+        .map(|(handle, label)| item_row(handle, label))
         .collect();
 
     let panel = container(column(rows))
@@ -43,10 +43,10 @@ pub fn cycle_popup_overlay(
     mouse_area(positioned).on_press(Message::CycleCancel).into()
 }
 
-fn item_row(label: String, msg: Message) -> Element<'static, Message> {
+fn item_row(handle: acadrust::Handle, label: String) -> Element<'static, Message> {
     let content = text(label).size(11).color(LABEL).align_y(iced::Center);
-    button(content)
-        .on_press(msg)
+    let btn = button(content)
+        .on_press(Message::CycleSelect(handle))
         .style(|_: &Theme, status| button::Style {
             background: Some(Background::Color(match status {
                 button::Status::Hovered => ROW_HOVER,
@@ -55,7 +55,11 @@ fn item_row(label: String, msg: Message) -> Element<'static, Message> {
             ..Default::default()
         })
         .width(Fill)
-        .padding([4, 10])
+        .padding([4, 10]);
+    // Highlight the underlying object while the cursor is over this row.
+    mouse_area(btn)
+        .on_enter(Message::CycleHover(Some(handle)))
+        .on_exit(Message::CycleHover(None))
         .into()
 }
 

@@ -3631,19 +3631,27 @@ impl OpenCADStudio {
             Message::ToggleSelectionCycling => {
                 self.selection_cycling ^= true;
                 self.cycle_candidates = None;
+                self.tabs[self.active_tab].scene.set_hover_highlight(None);
                 Task::none()
             }
             Message::CycleSelect(handle) => {
                 // Add the picked object to the current selection (accumulate).
                 self.cycle_candidates = None;
                 let i = self.active_tab;
+                self.tabs[i].scene.set_hover_highlight(None);
                 self.tabs[i].scene.select_entity(handle, false);
                 self.tabs[i].scene.expand_selection_for_groups(&[handle]);
                 self.refresh_properties();
                 Task::none()
             }
+            Message::CycleHover(handle) => {
+                let i = self.active_tab;
+                self.tabs[i].scene.set_hover_highlight(handle);
+                Task::none()
+            }
             Message::CycleCancel => {
                 self.cycle_candidates = None;
+                self.tabs[self.active_tab].scene.set_hover_highlight(None);
                 Task::none()
             }
             Message::ToggleSelectionFilterPopup => {

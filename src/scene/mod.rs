@@ -553,6 +553,9 @@ pub struct Scene {
     /// `tessellate_block`'s visibility test skips these, so they neither
     /// render nor hit-test until isolation ends.
     pub hidden: HashSet<Handle>,
+    /// Entity drawn with the selection-highlight colour without being part
+    /// of the real selection — used to preview a row in the cycling list box.
+    pub hover_highlight: Option<Handle>,
     /// Whether entity transparency is honoured on screen. When false the
     /// wire shader forces every line opaque (a uniform toggle, no retessellate).
     pub transparency_display: bool,
@@ -704,6 +707,7 @@ impl Scene {
             document: CadDocument::new(),
             selected: HashSet::new(),
             hidden: HashSet::new(),
+            hover_highlight: None,
             transparency_display: true,
             selection_filter: HashSet::new(),
             preview_wires: vec![],
@@ -1332,6 +1336,15 @@ impl Scene {
     /// True when any entities are hidden by Isolate / Hide.
     pub fn is_isolation_active(&self) -> bool {
         !self.hidden.is_empty()
+    }
+
+    /// Set (or clear) the previewed entity that renders with the selection
+    /// highlight without joining the real selection. Re-tessellates on change.
+    pub fn set_hover_highlight(&mut self, handle: Option<Handle>) {
+        if self.hover_highlight != handle {
+            self.hover_highlight = handle;
+            self.bump_geometry();
+        }
     }
 
     /// Hide every drawable entity except the current selection (Isolate).
@@ -2005,7 +2018,19 @@ impl Scene {
         // Tessellate in parallel across all available CPU cores.
         use rayon::prelude::*;
         let doc = &self.document;
-        let sel = &self.selected;
+        // Fold the hover-preview entity into the highlight set so it renders
+        // selected without being part of the real selection.
+        let hl_set;
+        let sel: &HashSet<Handle> = if let Some(h) = self.hover_highlight {
+            hl_set = {
+                let mut s = self.selected.clone();
+                s.insert(h);
+                s
+            };
+            &hl_set
+        } else {
+            &self.selected
+        };
         let avp = self.active_viewport;
         // A paper-space content viewport renders MODEL block entities while
         // the user is sitting in a paper layout — that path expects
