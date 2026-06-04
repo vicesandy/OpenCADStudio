@@ -5,7 +5,7 @@ use acadrust::entities::{Block, BlockEnd};
 use acadrust::tables::TableEntry;
 use acadrust::types::{Handle, Vector3};
 use acadrust::{CadDocument, EntityType};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::path::{Path, PathBuf};
 
 /// Status of an external reference block.
@@ -160,7 +160,7 @@ fn merge_xref_into_block(
     // Prefix every xref layer (including "0"). Entity layer references are
     // remapped below so the resolver finds the merged copy. Host layers
     // (incl. its own "0") are untouched — no collisions.
-    let mut layer_map: HashMap<String, String> = HashMap::new();
+    let mut layer_map: HashMap<String, String> = HashMap::default();
     for layer in xref_doc.layers.iter() {
         let old = layer.name.clone();
         let new = format!("{}|{}", prefix, old);
@@ -174,7 +174,7 @@ fn merge_xref_into_block(
     // ── Linetypes ───────────────────────────────────────────────────────
     // Skip the three sentinel names — "ByLayer" / "ByBlock" / "Continuous"
     // are magic strings the resolver matches verbatim in both docs.
-    let mut linetype_map: HashMap<String, String> = HashMap::new();
+    let mut linetype_map: HashMap<String, String> = HashMap::default();
     for lt in xref_doc.line_types.iter() {
         let old = lt.name.clone();
         if is_sentinel_linetype(&old) {
@@ -195,8 +195,8 @@ fn merge_xref_into_block(
     //
     // Tracks (xref-doc BR handle → host BR handle) so entities owned by
     // a nested xref block can be routed to the right host block_record.
-    let mut br_handle_map: HashMap<Handle, Handle> = HashMap::new();
-    let mut block_name_map: HashMap<String, String> = HashMap::new();
+    let mut br_handle_map: HashMap<Handle, Handle> = HashMap::default();
+    let mut block_name_map: HashMap<String, String> = HashMap::default();
     for br in xref_doc.block_records.iter() {
         // Skip layout block records (*Model_Space, *Paper_Space, *Paper_Space0…)
         // and any further-nested xrefs (we don't recurse into xref-of-xref).

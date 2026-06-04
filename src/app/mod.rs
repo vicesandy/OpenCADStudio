@@ -378,7 +378,7 @@ pub(super) struct OpenCADStudio {
 
     // ── Keyboard Shortcut Editor ──────────────────────────────────────────
     /// User-defined function-key overrides: "F3" → command string.
-    shortcut_overrides: std::collections::HashMap<String, String>,
+    shortcut_overrides: rustc_hash::FxHashMap<String, String>,
 
     // ── Layout Manager Panel ──────────────────────────────────────────────
     layout_manager_selected: String,
@@ -1324,7 +1324,7 @@ impl OpenCADStudio {
             // Color scheme (default: dark CAD-style)
             active_theme: Theme::Dark,
             // Keyboard shortcuts
-            shortcut_overrides: std::collections::HashMap::new(),
+            shortcut_overrides: rustc_hash::FxHashMap::default(),
             // Layout Manager
             layout_manager_selected: "Model".to_string(),
             layout_manager_rename_buf: String::new(),

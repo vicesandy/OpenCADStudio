@@ -16,7 +16,7 @@
 // Cap height is 9 glyph units, matching the `height / 9.0` text scale used
 // throughout the renderer.
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::sync::{Mutex, OnceLock};
 
 // ── Embedded fonts ─────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ fn warn_missing_glyph(font_name: &str, ch: char) {
     if ch.is_ascii() {
         return;
     }
-    let set = WARNED_GLYPHS.get_or_init(|| Mutex::new(HashSet::new()));
+    let set = WARNED_GLYPHS.get_or_init(|| Mutex::new(HashSet::default()));
     if let Ok(mut guard) = set.lock() {
         if guard.insert((font_name.to_string(), ch)) {
             eprintln!(
@@ -167,7 +167,7 @@ fn warn_missing_glyph(font_name: &str, ch: char) {
 
 fn fonts_map() -> &'static HashMap<String, Font> {
     FONTS.get_or_init(|| {
-        let mut map = HashMap::new();
+        let mut map = HashMap::default();
         // Register every font under its stem and its `# Name:` header.
         for (stem, src) in FONTS_SRC {
             let f = parse_lff(src);
@@ -461,12 +461,12 @@ fn parse_lff(src: &str) -> Font {
         letter_spacing: 3.0,
         word_spacing: 6.75,
         line_spacing: 1.0,
-        glyphs: HashMap::new(),
-        shapes: HashMap::new(),
+        glyphs: HashMap::default(),
+        shapes: HashMap::default(),
     };
 
-    let mut raw: HashMap<char, RawGlyph> = HashMap::new();
-    let mut raw_shapes: HashMap<String, RawGlyph> = HashMap::new();
+    let mut raw: HashMap<char, RawGlyph> = HashMap::default();
+    let mut raw_shapes: HashMap<String, RawGlyph> = HashMap::default();
     let mut cur: Option<char> = None;
     let mut cur_name: Option<String> = None;
     let mut cur_glyph = RawGlyph::default();

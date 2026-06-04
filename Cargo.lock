@@ -28,6 +28,7 @@ dependencies = [
  "printpdf",
  "rayon",
  "rfd",
+ "rustc-hash 2.1.2",
  "truck-meshalgo",
  "truck-modeling",
  "truck-polymesh",

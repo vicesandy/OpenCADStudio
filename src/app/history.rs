@@ -1,5 +1,5 @@
 use super::{document::HistorySnapshot, OpenCADStudio};
-use std::collections::HashSet;
+use rustc_hash::FxHashSet as HashSet;
 
 impl OpenCADStudio {
     pub(super) fn history_label_from_active_cmd(&self, i: usize, fallback: &'static str) -> String {

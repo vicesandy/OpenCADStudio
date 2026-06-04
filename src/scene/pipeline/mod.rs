@@ -891,7 +891,7 @@ impl Pipeline {
         &mut self,
         device: &wgpu::Device,
         wires: &[WireModel],
-        depth_map: &std::collections::HashMap<u64, f32>,
+        depth_map: &rustc_hash::FxHashMap<u64, f32>,
     ) {
         let depth_of = |w: &WireModel| -> f32 {
             w.name
@@ -987,7 +987,7 @@ impl Pipeline {
         face3d_wires: &[WireModel],
         all_wires: &[WireModel],
         wireframe_only: bool,
-        depth_map: &std::collections::HashMap<u64, f32>,
+        depth_map: &rustc_hash::FxHashMap<u64, f32>,
     ) {
         // Edge buffer is always built from `face3d_wires`, so 3DFACE
         // outlines stay on the screen regardless of mode.

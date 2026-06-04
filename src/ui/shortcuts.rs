@@ -79,7 +79,7 @@ fn section<'a>(title: &'static str) -> Element<'a, Message> {
 }
 
 pub fn view_window<'a>(
-    overrides: &'a std::collections::HashMap<String, String>,
+    overrides: &'a rustc_hash::FxHashMap<String, String>,
 ) -> Element<'a, Message> {
     // ── Toolbar ───────────────────────────────────────────────────────────
     let toolbar = container(

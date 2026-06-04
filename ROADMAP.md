@@ -203,7 +203,7 @@ matters.
 
 ## Phase 4 — Allocation & Memory
 
-### 4.1 Swap `HashMap` for `rustc-hash::FxHashMap`
+### 4.1 Swap `HashMap` for `rustc-hash::FxHashMap` ✅ DONE
 
 `Handle` is an integer wrapper; the default `SipHash` is overkill.
 `FxHashMap` gives 20-40 % in hash-heavy sites (block_cache, hatches /

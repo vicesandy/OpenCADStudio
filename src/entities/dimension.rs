@@ -808,7 +808,7 @@ pub trait DimensionTess {
         line_weight_px: f32,
         world_offset: [f64; 3],
         anno_scale: f32,
-        selected_set: &std::collections::HashSet<acadrust::Handle>,
+        selected_set: &rustc_hash::FxHashSet<acadrust::Handle>,
         active_viewport: Option<acadrust::Handle>,
         bg_color: [f32; 4],
         view_aabb: Option<[f32; 4]>,
@@ -826,7 +826,7 @@ impl DimensionTess for Dimension {
         line_weight_px: f32,
         world_offset: [f64; 3],
         anno_scale: f32,
-        selected_set: &std::collections::HashSet<acadrust::Handle>,
+        selected_set: &rustc_hash::FxHashSet<acadrust::Handle>,
         active_viewport: Option<acadrust::Handle>,
         bg_color: [f32; 4],
         view_aabb: Option<[f32; 4]>,
@@ -862,7 +862,7 @@ fn tessellate_dimension_inner(
     // LOD hints — when present, synthesised dim text routes through the
     // top-level LOD ladder (baseline / greek / full) instead of the truck
     // path so far-out drawings collapse to a colored rect or baseline.
-    selected_set: &std::collections::HashSet<acadrust::Handle>,
+    selected_set: &rustc_hash::FxHashSet<acadrust::Handle>,
     active_viewport: Option<acadrust::Handle>,
     bg_color: [f32; 4],
     view_aabb: Option<[f32; 4]>,

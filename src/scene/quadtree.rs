@@ -57,7 +57,7 @@ pub struct QuadTree {
     nodes: Vec<Node>,
     /// `handle → (node_idx, item_idx_within_node)` so removal/update
     /// is O(1) without walking the tree.
-    locator: std::collections::HashMap<Handle, (u32, u32)>,
+    locator: rustc_hash::FxHashMap<Handle, (u32, u32)>,
     /// Items whose AABB falls outside the root bounds. Surfaced on
     /// every query — small set in practice (typically empty for
     /// well-bounded drawings).
@@ -74,7 +74,7 @@ impl QuadTree {
         };
         Self {
             nodes: vec![root],
-            locator: std::collections::HashMap::new(),
+            locator: rustc_hash::FxHashMap::default(),
             overflow: Vec::new(),
         }
     }

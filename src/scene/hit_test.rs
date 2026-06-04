@@ -4,7 +4,7 @@
 //! to 2-D pixel coordinates, then compared against the cursor or selection box.
 //! This matches the visual result the user sees.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 use acadrust::Handle;
 use glam::{Mat4, Vec3};

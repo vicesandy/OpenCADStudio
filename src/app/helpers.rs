@@ -171,7 +171,7 @@ pub(super) fn entities_centroid(wires: &[WireModel]) -> glam::Vec3 {
 
 /// Generate the next available auto group name ("*A1", "*A2", …).
 pub(super) fn next_group_auto_name(scene: &crate::scene::Scene) -> String {
-    let existing: std::collections::HashSet<String> =
+    let existing: rustc_hash::FxHashSet<String> =
         scene.groups().map(|g| g.name.clone()).collect();
     for n in 1..=9999 {
         let name = format!("*A{n}");

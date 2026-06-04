@@ -6,7 +6,7 @@
 //
 // Dropdown items within a group are collected into columns of 3 rows.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 use acadrust::types::{Color as AcadColor, LineWeight};
 use iced::widget::{button, column, container, mouse_area, row, scrollable, svg, text};
@@ -73,7 +73,7 @@ impl Ribbon {
             wireframe: false,
             ortho_mode: true,
             open_dropdown: None,
-            last_cmd: HashMap::new(),
+            last_cmd: HashMap::default(),
             layer_names: vec!["0".to_string()],
             active_layer: "0".to_string(),
             layer_infos: vec![LayerInfo {

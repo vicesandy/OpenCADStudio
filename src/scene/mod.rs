@@ -62,7 +62,7 @@ use truck_modeling::{
 
 use iced::time::Duration;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -256,9 +256,9 @@ struct OffsetPrep {
     /// `Some` when the model BlockRecord enumerates its entities; the offset
     /// scan uses this set directly. `None` falls back to the legacy
     /// permissive owner-based interpretation.
-    mspace_set: Option<std::collections::HashSet<Handle>>,
+    mspace_set: Option<rustc_hash::FxHashSet<Handle>>,
     any_enumerated: bool,
-    owned_by_other_block: std::collections::HashSet<Handle>,
+    owned_by_other_block: rustc_hash::FxHashSet<Handle>,
 }
 
 fn offset_prep(doc: &acadrust::CadDocument, model_block: Handle) -> OffsetPrep {
@@ -266,21 +266,21 @@ fn offset_prep(doc: &acadrust::CadDocument, model_block: Handle) -> OffsetPrep {
         .block_records
         .iter()
         .find(|br| br.handle == model_block);
-    let mspace_set: Option<std::collections::HashSet<Handle>> = model_br
+    let mspace_set: Option<rustc_hash::FxHashSet<Handle>> = model_br
         .filter(|br| !br.entity_handles.is_empty())
         .map(|br| br.entity_handles.iter().copied().collect());
     let any_enumerated = doc
         .block_records
         .iter()
         .any(|br| !br.entity_handles.is_empty());
-    let owned_by_other_block: std::collections::HashSet<Handle> = if mspace_set.is_none() {
+    let owned_by_other_block: rustc_hash::FxHashSet<Handle> = if mspace_set.is_none() {
         doc.block_records
             .iter()
             .filter(|br| br.handle != model_block)
             .flat_map(|br| br.entity_handles.iter().copied())
             .collect()
     } else {
-        std::collections::HashSet::new()
+        rustc_hash::FxHashSet::default()
     };
     OffsetPrep { mspace_set, any_enumerated, owned_by_other_block }
 }
@@ -718,31 +718,31 @@ impl Scene {
             active_model_tile: std::cell::Cell::new(0),
             selection: Rc::new(RefCell::new(SelectionState::default())),
             document: CadDocument::new(),
-            selected: HashSet::new(),
-            hidden: HashSet::new(),
+            selected: HashSet::default(),
+            hidden: HashSet::default(),
             hover_highlight: None,
             transparency_display: true,
-            selection_filter: HashSet::new(),
+            selection_filter: HashSet::default(),
             preview_wires: vec![],
             interim_wire: None,
             camera_generation: 0,
             geometry_epoch: GEOMETRY_EPOCH.fetch_add(1, Ordering::Relaxed),
             wire_cache: RefCell::new(None),
-            model_tile_wire_cache: RefCell::new(HashMap::new()),
+            model_tile_wire_cache: RefCell::new(HashMap::default()),
             sort_cache: RefCell::new(None),
             draw_depth_cache: RefCell::new(None),
             hatch_cache: RefCell::new(None),
             wipeout_cache: RefCell::new(None),
             image_cache: RefCell::new(None),
             mesh_cache: RefCell::new(None),
-            viewport_wire_cache: RefCell::new(HashMap::new()),
+            viewport_wire_cache: RefCell::new(HashMap::default()),
             paper_sheet_cache: RefCell::new(None),
-            paper_projected_cache: RefCell::new(HashMap::new()),
+            paper_projected_cache: RefCell::new(HashMap::default()),
             current_layout: "Model".to_string(),
-            hatches: HashMap::new(),
-            meshes: HashMap::new(),
-            model_solids: HashMap::new(),
-            images: HashMap::new(),
+            hatches: HashMap::default(),
+            meshes: HashMap::default(),
+            model_solids: HashMap::default(),
+            images: HashMap::default(),
             active_viewport: None,
             bg_color: [0.11, 0.11, 0.11, 1.0],
             paper_bg_color: [1.0, 1.0, 1.0, 1.0],
@@ -1455,7 +1455,7 @@ impl Scene {
         // Deduplicate by name: prefer the entry with a non-null block_record (the
         // real layout from the file) over the default placeholder created by
         // CadDocument::new().
-        let mut by_name: std::collections::HashMap<String, (i16, Handle)> = Default::default();
+        let mut by_name: rustc_hash::FxHashMap<String, (i16, Handle)> = Default::default();
         for obj in self.document.objects.values() {
             if let ObjectType::Layout(l) = obj {
                 if l.name == "Model" || l.name.is_empty() {
@@ -1628,7 +1628,7 @@ impl Scene {
         }
         use acadrust::objects::ObjectType;
         // Per-block SortEntitiesTable overrides: block -> (entity_val -> sort_val).
-        let mut overrides: HashMap<Handle, HashMap<u64, u64>> = HashMap::new();
+        let mut overrides: HashMap<Handle, HashMap<u64, u64>> = HashMap::default();
         for obj in self.document.objects.values() {
             if let ObjectType::SortEntitiesTable(t) = obj {
                 if !t.is_empty() {
@@ -1643,7 +1643,7 @@ impl Scene {
         }
         let ms = self.model_space_block_handle();
         // Group entities by owning block, carrying each entity's effective key.
-        let mut by_block: HashMap<Handle, Vec<(u64, u64)>> = HashMap::new();
+        let mut by_block: HashMap<Handle, Vec<(u64, u64)>> = HashMap::default();
         for e in self.document.entities() {
             let c = e.common();
             // 3D meshes keep real geometric depth — exclude them from
@@ -1667,7 +1667,7 @@ impl Scene {
                 .unwrap_or(hv);
             by_block.entry(block).or_default().push((hv, eff));
         }
-        let mut depth_map: HashMap<u64, f32> = HashMap::new();
+        let mut depth_map: HashMap<u64, f32> = HashMap::default();
         for (_block, mut v) in by_block {
             v.sort_by_key(|(_, eff)| *eff);
             let denom = (v.len() as f32) + 1.0;
@@ -1928,7 +1928,7 @@ impl Scene {
                 .unwrap_or(true);
 
             if needs_rebuild {
-                let mut idx: HashMap<Handle, HashMap<u64, u64>> = HashMap::new();
+                let mut idx: HashMap<Handle, HashMap<u64, u64>> = HashMap::default();
                 for obj in self.document.objects.values() {
                     if let ObjectType::SortEntitiesTable(t) = obj {
                         if !t.is_empty() {
@@ -2187,7 +2187,7 @@ impl Scene {
                 }
             }
         }
-        let mut map: HashMap<Handle, Handle> = HashMap::new();
+        let mut map: HashMap<Handle, Handle> = HashMap::default();
         for br in self.document.block_records.iter() {
             for &eh in &br.entity_handles {
                 map.insert(eh, br.handle);
@@ -4098,11 +4098,11 @@ impl Scene {
 
     pub fn clear(&mut self) {
         self.document = CadDocument::new();
-        self.selected = HashSet::new();
+        self.selected = HashSet::default();
         self.preview_wires = vec![];
         self.current_layout = "Model".to_string();
-        self.hatches = HashMap::new();
-        self.meshes = HashMap::new();
+        self.hatches = HashMap::default();
+        self.meshes = HashMap::default();
         *self.camera.borrow_mut() = Camera::default();
         self.camera_generation += 1;
         self.bump_geometry();
@@ -4201,7 +4201,7 @@ impl Scene {
         if self.selected.is_empty() {
             return 0;
         }
-        let pairs: std::collections::HashSet<(&'static str, String)> = self
+        let pairs: rustc_hash::FxHashSet<(&'static str, String)> = self
             .selected
             .iter()
             .filter_map(|h| self.document.get_entity(*h))
@@ -6276,7 +6276,7 @@ impl Scene {
         vp_handle: Handle,
         screen_height_px: f32,
     ) -> Vec<WireModel> {
-        use std::collections::HashSet as HSet;
+        use rustc_hash::FxHashSet as HSet;
 
         let (frozen, vp_anno_scale, vp_aspect) = match self.document.get_entity(vp_handle) {
             Some(EntityType::Viewport(vp)) => {
@@ -6295,7 +6295,7 @@ impl Scene {
                 };
                 (f, anno, aspect)
             }
-            _ => (HSet::new(), 1.0_f32, 1.0_f32),
+            _ => (HSet::default(), 1.0_f32, 1.0_f32),
         };
 
         // Drive the per-viewport view_aabb / wpp from the *effective* camera

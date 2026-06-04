@@ -7,7 +7,7 @@
 //! • Linetype   → read-only for now
 //! • Geometry   → text_input per coordinate / dimension field
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::fmt;
 
 use crate::ui::ROW_H;
@@ -142,12 +142,12 @@ impl Default for PropertiesPanel {
             selected_group: None,
             linetype_items: vec![],
             selection_group_combo: combo_box::State::new(vec![]),
-            choice_combos: HashMap::new(),
+            choice_combos: HashMap::default(),
             layer_combo: combo_box::State::new(vec![]),
             lineweight_combo: combo_box::State::new(lw_options()),
             linetype_combo: combo_box::State::new(vec![]),
             hatch_pattern_combo: combo_box::State::new(crate::scene::hatch_patterns::names()),
-            edit_buf: HashMap::new(),
+            edit_buf: HashMap::default(),
             color_picker_open: false,
             color_palette_open: false,
         }

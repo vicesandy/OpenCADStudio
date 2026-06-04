@@ -2,7 +2,7 @@
 //! A checked row means that type can be picked; unchecking it excludes the
 //! type from interactive selection. Opened from the FILTER status pill.
 
-use std::collections::HashSet;
+use rustc_hash::FxHashSet as HashSet;
 
 use iced::widget::{button, column, container, mouse_area, row, text};
 use iced::{Background, Border, Color, Element, Fill, Length, Padding, Theme};

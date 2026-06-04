@@ -15,7 +15,7 @@
 // a visited set so a self-referential block produces a marker rather than
 // recursing forever.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::sync::Arc;
 
 use acadrust::types::{Color as AcadColor, LineWeight, Transform, Vector3};
@@ -206,8 +206,8 @@ impl BlockCache {
 /// Walk all entities + all block_record contents collecting every distinct
 /// `block_name` that appears in an Insert (transitively).
 fn collect_referenced_blocks(doc: &CadDocument) -> Vec<String> {
-    use std::collections::HashSet;
-    let mut seen: HashSet<String> = HashSet::new();
+    use rustc_hash::FxHashSet as HashSet;
+    let mut seen: HashSet<String> = HashSet::default();
     let mut queue: Vec<String> = Vec::new();
 
     for entity in doc.entities() {

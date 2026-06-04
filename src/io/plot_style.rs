@@ -9,7 +9,7 @@
 //! STB files follow the same format but use named styles instead of
 //! ACI indices; they are read into a `Vec<NamedPlotStyle>`.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::io::Read;
 use std::path::Path;
 
@@ -72,7 +72,7 @@ impl PlotStyleTable {
             name: name.into(),
             is_stb: false,
             aci_entries: (0..=255).map(|_| PlotStyleEntry::default()).collect(),
-            named_entries: HashMap::new(),
+            named_entries: HashMap::default(),
         }
     }
 
@@ -202,7 +202,7 @@ fn compress_ctb(text: &[u8]) -> Result<Vec<u8>, String> {
 fn parse_plot_style_text(text: &str, name: String, is_stb: bool) -> Result<PlotStyleTable, String> {
     let mut aci_entries: Vec<PlotStyleEntry> =
         (0..=255).map(|_| PlotStyleEntry::default()).collect();
-    let mut named_entries: HashMap<String, PlotStyleEntry> = HashMap::new();
+    let mut named_entries: HashMap<String, PlotStyleEntry> = HashMap::default();
     let mut style_index: usize = 1; // CTB: 1-based ACI index
     let mut current: Option<PlotStyleEntry> = None;
     let mut current_name: String = String::new();

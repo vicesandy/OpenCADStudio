@@ -118,7 +118,7 @@ impl OpenCADStudio {
                     self.command_line.push_info(&cmd.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(cmd));
                 } else {
-                    let layers: std::collections::HashSet<String> = self.tabs[i]
+                    let layers: rustc_hash::FxHashSet<String> = self.tabs[i]
                         .scene
                         .selected_entities()
                         .into_iter()
@@ -153,7 +153,7 @@ impl OpenCADStudio {
                     self.command_line.push_info(&cmd.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(cmd));
                 } else {
-                    let layers: std::collections::HashSet<String> = self.tabs[i]
+                    let layers: rustc_hash::FxHashSet<String> = self.tabs[i]
                         .scene
                         .selected_entities()
                         .into_iter()
@@ -188,7 +188,7 @@ impl OpenCADStudio {
                     self.command_line.push_info(&cmd.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(cmd));
                 } else {
-                    let layers: std::collections::HashSet<String> = self.tabs[i]
+                    let layers: rustc_hash::FxHashSet<String> = self.tabs[i]
                         .scene
                         .selected_entities()
                         .into_iter()
@@ -278,7 +278,7 @@ impl OpenCADStudio {
                     self.command_line.push_info(&cmd.prompt());
                     self.tabs[i].active_cmd = Some(Box::new(cmd));
                 } else {
-                    let layers: std::collections::HashSet<String> = self.tabs[i]
+                    let layers: rustc_hash::FxHashSet<String> = self.tabs[i]
                         .scene
                         .selected_entities()
                         .into_iter()
@@ -299,7 +299,7 @@ impl OpenCADStudio {
 
             // LAYISO — turn off all layers except those used by selected entities
             "LAYISO" => {
-                let sel_layers: std::collections::HashSet<String> = self.tabs[i]
+                let sel_layers: rustc_hash::FxHashSet<String> = self.tabs[i]
                     .scene
                     .selected_entities()
                     .into_iter()
@@ -3090,10 +3090,10 @@ impl OpenCADStudio {
                         // including ones not yet in the table, which sort by
                         // their own handle. (min_eff, max_eff) over siblings.
                         let fb_baseline: Option<(u64, u64)> = if to_front_opt.is_some() {
-                            let selected_set: std::collections::HashSet<u64> =
+                            let selected_set: rustc_hash::FxHashSet<u64> =
                                 selected.iter().map(|h| h.value()).collect();
                             let doc_ref = &self.tabs[i].scene.document;
-                            let overrides: std::collections::HashMap<u64, u64> = doc_ref
+                            let overrides: rustc_hash::FxHashMap<u64, u64> = doc_ref
                                 .objects
                                 .values()
                                 .find_map(|obj| {
@@ -4358,7 +4358,7 @@ impl OpenCADStudio {
                 let all = sub == "ALL" || sub.is_empty();
 
                 // Collect names in use (immutable borrows — done in their own scope)
-                let used_layers: std::collections::HashSet<String> = self.tabs[i]
+                let used_layers: rustc_hash::FxHashSet<String> = self.tabs[i]
                     .scene
                     .document
                     .entities()
@@ -4371,7 +4371,7 @@ impl OpenCADStudio {
                         }
                     })
                     .collect();
-                let used_text_styles: std::collections::HashSet<String> = self.tabs[i]
+                let used_text_styles: rustc_hash::FxHashSet<String> = self.tabs[i]
                     .scene
                     .document
                     .entities()
@@ -4382,7 +4382,7 @@ impl OpenCADStudio {
                     })
                     .filter(|s| !s.is_empty())
                     .collect();
-                let used_linetypes: std::collections::HashSet<String> = self.tabs[i]
+                let used_linetypes: rustc_hash::FxHashSet<String> = self.tabs[i]
                     .scene
                     .document
                     .entities()

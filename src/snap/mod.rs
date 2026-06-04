@@ -63,7 +63,7 @@ pub struct SnapResult {
 
 // ── Snapper ───────────────────────────────────────────────────────────────
 
-use std::collections::HashSet;
+use rustc_hash::FxHashSet as HashSet;
 
 pub struct Snapper {
     /// Global snap on/off toggle.  When false, all snapping is bypassed
@@ -87,7 +87,7 @@ pub struct Snapper {
 
 impl Default for Snapper {
     fn default() -> Self {
-        let mut enabled = HashSet::new();
+        let mut enabled = HashSet::default();
         enabled.insert(SnapType::Endpoint);
         enabled.insert(SnapType::Midpoint);
         enabled.insert(SnapType::Center);
@@ -257,7 +257,7 @@ impl Snapper {
         let tmp = Snapper {
             snap_enabled: true,
             enabled: {
-                let mut s = HashSet::new();
+                let mut s = HashSet::default();
                 s.insert(SnapType::Tangent);
                 s
             },

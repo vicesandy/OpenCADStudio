@@ -5,7 +5,7 @@
 //! adds or removes that pill from the bar. The choice is persisted so it
 //! survives across sessions.
 
-use std::collections::HashSet;
+use rustc_hash::FxHashSet as HashSet;
 use std::path::PathBuf;
 
 /// Identifies a toggleable status-bar pill.
@@ -121,7 +121,7 @@ pub struct StatusBarConfig {
 impl StatusBarConfig {
     /// Load the saved customization, or all-visible when none exists.
     pub fn load() -> Self {
-        let mut hidden = HashSet::new();
+        let mut hidden = HashSet::default();
         if let Some(path) = config_path() {
             if let Ok(body) = std::fs::read_to_string(path) {
                 for line in body.lines() {

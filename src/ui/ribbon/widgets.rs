@@ -1,7 +1,7 @@
 // Shared rendering helpers, button styles, colours, layout constants, and
 // free functions used by the Ribbon view/overlay methods.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::time::Duration;
 
 use acadrust::types::{Color as AcadColor, LineWeight};

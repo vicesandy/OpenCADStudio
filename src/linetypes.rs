@@ -5,7 +5,7 @@
 //!
 //! [`complex_lt`] returns the complex segment catalog for CPU-side rendering.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::sync::OnceLock;
 
 use acadrust::tables::linetype::{LineType, LineTypeElement};
@@ -217,7 +217,7 @@ fn push_element(token: &str, out: &mut Vec<LineTypeElement>) {
 /// A linetype is "complex" when its A-line contains at least one `[SHAPE,...]`
 /// element.  Simple (dash-only) linetypes are excluded.
 fn parse_complex(src: &str) -> HashMap<String, ComplexLt> {
-    let mut catalog: HashMap<String, ComplexLt> = HashMap::new();
+    let mut catalog: HashMap<String, ComplexLt> = HashMap::default();
     let mut current: Option<(String, String)> = None; // (name, description)
 
     for raw in src.lines() {

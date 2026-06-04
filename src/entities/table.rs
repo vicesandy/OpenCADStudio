@@ -59,8 +59,8 @@ impl TruckConvertible for Table {
         // hidden borders disappear from the grid. Cells with no style still
         // emit the standard four borders. To avoid drawing each shared edge
         // twice we coalesce the segments by their (start, end) coordinates.
-        use std::collections::HashSet;
-        let mut emitted: HashSet<(i32, i32, i32, i32)> = HashSet::new();
+        use rustc_hash::FxHashSet as HashSet;
+        let mut emitted: HashSet<(i32, i32, i32, i32)> = HashSet::default();
         let try_add = |a: Vec3, b: Vec3, vis: bool, emitted: &mut HashSet<(i32, i32, i32, i32)>, pts: &mut Vec<[f32; 3]>| {
             if !vis {
                 return;
@@ -334,7 +334,7 @@ pub fn tessellate_table(
     use crate::scene::tess_util::aci_to_rgba;
     use crate::scene::wire_model::WireModel;
     use acadrust::types::Color;
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap as HashMap;
 
     if tab.rows.is_empty() || tab.columns.is_empty() {
         return Vec::new();
@@ -438,10 +438,10 @@ pub fn tessellate_table(
         };
 
     // Accumulators keyed by quantised colour (+ weight for borders).
-    let mut fills: HashMap<[u8; 4], ([f32; 4], Vec<[f32; 3]>)> = HashMap::new();
-    let mut texts: HashMap<[u8; 4], ([f32; 4], Vec<[f32; 3]>)> = HashMap::new();
-    let mut borders: HashMap<([u8; 4], u32), ([f32; 4], f32, Vec<[f32; 3]>)> = HashMap::new();
-    let mut emitted: std::collections::HashSet<(i32, i32, i32, i32)> = std::collections::HashSet::new();
+    let mut fills: HashMap<[u8; 4], ([f32; 4], Vec<[f32; 3]>)> = HashMap::default();
+    let mut texts: HashMap<[u8; 4], ([f32; 4], Vec<[f32; 3]>)> = HashMap::default();
+    let mut borders: HashMap<([u8; 4], u32), ([f32; 4], f32, Vec<[f32; 3]>)> = HashMap::default();
+    let mut emitted: rustc_hash::FxHashSet<(i32, i32, i32, i32)> = rustc_hash::FxHashSet::default();
     let sel_col = WireModel::SELECTED;
 
     let mut add_edge =

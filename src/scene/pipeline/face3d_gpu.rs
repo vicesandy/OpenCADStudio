@@ -93,7 +93,7 @@ impl Face3DGpu {
         face3d_wires: &[WireModel],
         all_wires: &[WireModel],
         keep_3d_mesh_fills: bool,
-        depth_map: &std::collections::HashMap<u64, f32>,
+        depth_map: &rustc_hash::FxHashMap<u64, f32>,
     ) -> Self {
         let depth_of = |w: &WireModel| -> f32 {
             w.name

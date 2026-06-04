@@ -10,7 +10,7 @@
 // All other surface types are silently skipped; partial results are still
 // returned so the solid renders with at least its planar faces.
 
-use std::collections::HashSet;
+use rustc_hash::FxHashSet as HashSet;
 use std::f64::consts::TAU;
 
 use acadrust::entities::acis::types::Sense;
@@ -237,7 +237,7 @@ fn collect_face_polygon(sat: &SatDocument, face: &SatFace) -> Vec<[f64; 3]> {
     let first_ptr = sat_loop.first_coedge();
     let mut cur = first_ptr;
     let mut pts: Vec<[f64; 3]> = Vec::new();
-    let mut visited: HashSet<i32> = HashSet::new();
+    let mut visited: HashSet<i32> = HashSet::default();
 
     loop {
         if cur.is_null() {

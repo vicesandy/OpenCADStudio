@@ -267,7 +267,7 @@ fn emit_wire_instances(wire: &WireModel, color: [f32; 4], draw_depth: f32) -> Ve
 /// Looks up a wire's draw-order depth from the per-entity map using the
 /// handle encoded in its `name`. Falls back to 0.0 (transient / preview
 /// wires that carry no document handle).
-fn wire_draw_depth(wire: &WireModel, depth_map: &std::collections::HashMap<u64, f32>) -> f32 {
+fn wire_draw_depth(wire: &WireModel, depth_map: &rustc_hash::FxHashMap<u64, f32>) -> f32 {
     wire
         .name
         .parse::<u64>()
@@ -290,7 +290,7 @@ impl WireGpu {
     pub fn from_batch(
         device: &wgpu::Device,
         wires: &[WireModel],
-        depth_map: &std::collections::HashMap<u64, f32>,
+        depth_map: &rustc_hash::FxHashMap<u64, f32>,
     ) -> Vec<Self> {
         let total_segs: usize = wires.iter().map(|w| w.points.len().saturating_sub(1)).sum();
         if total_segs == 0 {

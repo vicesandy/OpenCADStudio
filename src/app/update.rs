@@ -214,7 +214,7 @@ impl OpenCADStudio {
                 self.tabs[i].scene.meshes = caches.meshes;
                 // Invalidate the wire cache so the new document is tessellated.
                 self.tabs[i].scene.bump_geometry();
-                self.tabs[i].scene.selected = std::collections::HashSet::new();
+                self.tabs[i].scene.selected = rustc_hash::FxHashSet::default();
                 self.tabs[i].scene.preview_wires = vec![];
                 self.tabs[i].scene.current_layout = "Model".to_string();
                 crate::linetypes::populate_document(&mut self.tabs[i].scene.document);
