@@ -176,6 +176,17 @@ outright — no re-tessellation, `tess ms` drops to ~0 on the PERF HUD. Zoom
 exactly as before; the cull margin is unchanged, so miss cost is identical
 (no zoom regression).
 
+**Partial (landed): selection decoupled.** Picking an entity used to call
+`bump_geometry`, invalidating the wire cache and re-tessellating the WHOLE
+model just to repaint one entity (30 ms → 400 ms on a large drawing). The
+highlight is no longer baked into tessellation: wires are always base-coloured
+(`sel` is empty in `wires_for_block_culled`), and the selection highlight is
+applied in the GPU xray overlay from the live `selected ∪ hover` set,
+recoloured to `WireModel::SELECTED`. Selection / hover now bump a cheap
+`selection_generation` instead of `geometry_epoch`, so the overlay refreshes
+without any re-tessellation or main-buffer re-upload. `tess ms` stays flat
+when selecting.
+
 **Partial (landed): per-frame split.** `build_primitive` ran
 `split_face3d_wires` every frame — an O(N) per-wire handle lookup + clone to
 separate Face3D wires — even on a pan that reused the tessellation. It's now

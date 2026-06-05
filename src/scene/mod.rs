@@ -616,6 +616,11 @@ pub struct Scene {
     /// preview wires, layer visibility, layout). The GPU pipeline uses this to
     /// skip re-uploading unchanged geometry buffers every frame.
     pub geometry_epoch: u64,
+    /// Incremented when the selection / hover-highlight set changes WITHOUT a
+    /// geometry change. The wire tessellation is selection-independent, so a
+    /// pick only refreshes the GPU xray overlay (cheap) instead of bumping
+    /// `geometry_epoch` and re-tessellating the whole model.
+    pub selection_generation: u64,
     /// Cached tessellation of all visible entity wires for the current layout.
     /// Keyed by `(geometry_epoch, camera_generation)` so a camera change
     /// invalidates the cull-dependent wire list as well as a geometry change.
@@ -759,6 +764,10 @@ pub struct Scene {
     #[allow(clippy::type_complexity)]
     split_cache:
         RefCell<Option<(u64, Arc<Vec<WireModel>>, Arc<Vec<WireModel>>)>>,
+    /// Cached `selected ∪ hover` handle set for the GPU xray overlay, keyed by
+    /// `selection_generation`. Rebuilt only when the selection changes so
+    /// `build_primitive` doesn't clone the set every frame.
+    highlight_set_cache: RefCell<Option<(u64, Arc<HashSet<Handle>>)>>,
 }
 
 impl Scene {
@@ -787,6 +796,7 @@ impl Scene {
             interim_wire: None,
             camera_generation: 0,
             geometry_epoch: GEOMETRY_EPOCH.fetch_add(1, Ordering::Relaxed),
+            selection_generation: 0,
             wire_cache: RefCell::new(None),
             model_tile_wire_cache: RefCell::new(HashMap::default()),
             sort_cache: RefCell::new(None),
@@ -821,6 +831,7 @@ impl Scene {
             last_model_wire_gen: std::cell::Cell::new(0),
             wire_force_nonce: std::cell::Cell::new(0),
             split_cache: RefCell::new(None),
+            highlight_set_cache: RefCell::new(None),
         }
     }
 
@@ -932,6 +943,35 @@ impl Scene {
 
     pub fn bump_geometry(&mut self) {
         self.geometry_epoch = GEOMETRY_EPOCH.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Mark the selection / hover-highlight set dirty without invalidating the
+    /// (selection-independent) wire tessellation. Only the GPU xray overlay is
+    /// rebuilt — no re-tessellation. Use this for pure select / deselect /
+    /// hover changes; use [`bump_geometry`] when the geometry itself changed.
+    pub fn bump_selection(&mut self) {
+        self.selection_generation = self.selection_generation.wrapping_add(1);
+    }
+
+    /// `selected ∪ hover` handles, cached per `selection_generation`. Drives the
+    /// GPU xray overlay that highlights the current selection without baking it
+    /// into the wire tessellation.
+    pub(super) fn highlight_handles(&self) -> Arc<HashSet<Handle>> {
+        {
+            let c = self.highlight_set_cache.borrow();
+            if let Some((gen, arc)) = &*c {
+                if *gen == self.selection_generation {
+                    return Arc::clone(arc);
+                }
+            }
+        }
+        let mut hl = self.selected.clone();
+        if let Some(h) = self.hover_highlight {
+            hl.insert(h);
+        }
+        let arc = Arc::new(hl);
+        *self.highlight_set_cache.borrow_mut() = Some((self.selection_generation, Arc::clone(&arc)));
+        arc
     }
 
     /// Re-evaluate every cached mesh's color through `render_style` so a
@@ -1417,23 +1457,21 @@ impl Scene {
     }
 
     /// Set (or clear) the previewed entity that renders with the selection
-    /// highlight without joining the real selection. Re-tessellates on change.
+    /// highlight without joining the real selection. Only refreshes the GPU
+    /// xray overlay (no re-tessellation).
     pub fn set_hover_highlight(&mut self, handle: Option<Handle>) {
         if self.hover_highlight == handle {
             return;
         }
-        // The hover entity is folded into the tessellation highlight set
-        // (selected ∪ {hover}); see `wires_for_block_culled`. A hover handle
-        // that's already selected contributes nothing, so the effective set —
-        // and thus every WireModel — is identical. Only re-tessellate when the
-        // effective highlight contribution actually changes; hovering over (or
-        // between) already-selected entities then costs nothing. The field is
-        // still updated so hit-test / UI state stays current.
+        // Hover is folded into the highlight set (selected ∪ {hover}) that
+        // drives the xray overlay. A hover handle that's already selected
+        // contributes nothing, so the effective set is unchanged — skip the
+        // overlay refresh then. The field is still updated for hit-test / UI.
         let contribution = |h: Option<Handle>| h.filter(|h| !self.selected.contains(h));
         let changed = contribution(self.hover_highlight) != contribution(handle);
         self.hover_highlight = handle;
         if changed {
-            self.bump_geometry();
+            self.bump_selection();
         }
     }
 
@@ -2138,19 +2176,14 @@ impl Scene {
         // Tessellate in parallel across all available CPU cores.
         use rayon::prelude::*;
         let doc = &self.document;
-        // Fold the hover-preview entity into the highlight set so it renders
-        // selected without being part of the real selection.
-        let hl_set;
-        let sel: &HashSet<Handle> = if let Some(h) = self.hover_highlight {
-            hl_set = {
-                let mut s = self.selected.clone();
-                s.insert(h);
-                s
-            };
-            &hl_set
-        } else {
-            &self.selected
-        };
+        // Selection / hover highlight is NOT baked into tessellation. It is
+        // applied per frame in the GPU xray overlay pass from the live
+        // selection set (`Scene::selected` ∪ hover). Keeping `sel` empty here
+        // makes the wire cache selection-independent, so picking an entity
+        // bumps only `selection_generation` (cheap overlay refresh) instead of
+        // `geometry_epoch` (a full model re-tessellation).
+        let empty_sel: HashSet<Handle> = HashSet::default();
+        let sel: &HashSet<Handle> = &empty_sel;
         let avp = self.active_viewport;
         // A paper-space content viewport renders MODEL block entities while
         // the user is sitting in a paper layout — that path expects
@@ -4262,18 +4295,18 @@ impl Scene {
             self.selected.clear();
         }
         self.selected.insert(handle);
-        self.bump_geometry();
+        self.bump_selection();
     }
 
     pub fn deselect_all(&mut self) {
         self.selected.clear();
-        self.bump_geometry();
+        self.bump_selection();
     }
 
     /// Remove a single entity from the selection (Shift+click subtractive pick).
     pub fn deselect_entity(&mut self, handle: Handle) {
         if self.selected.remove(&handle) {
-            self.bump_geometry();
+            self.bump_selection();
         }
     }
 
@@ -4329,7 +4362,7 @@ impl Scene {
             }
         }
         if added > 0 {
-            self.bump_geometry();
+            self.bump_selection();
         }
         added
     }
@@ -4397,7 +4430,7 @@ impl Scene {
                 matched += 1;
             }
         }
-        self.bump_geometry();
+        self.bump_selection();
         matched
     }
 
@@ -4658,7 +4691,7 @@ impl Scene {
         for h in to_add {
             self.selected.insert(h);
         }
-        self.bump_geometry();
+        self.bump_selection();
     }
 
     // ── Layer helpers ──────────────────────────────────────────────────────

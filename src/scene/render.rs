@@ -81,6 +81,13 @@ pub struct ViewportData {
     /// world-space wire buffer when only the camera moved. Non-tile and
     /// preview/interim frames carry a fresh id each time → always re-upload.
     pub(super) wire_content_id: u64,
+    /// `selected ∪ hover` handles for the GPU xray overlay. The highlight is no
+    /// longer baked into the wire tessellation, so `prepare` rebuilds the
+    /// selected-wire batch by filtering `wires` against this set.
+    pub(super) highlight_handles: Arc<rustc_hash::FxHashSet<acadrust::Handle>>,
+    /// Bumped on selection / hover change. Paired with `wire_content_id` to
+    /// decide when the xray overlay batch needs rebuilding.
+    pub(super) selection_generation: u64,
     /// Screen rectangle this viewport fills, **normalized** to the widget
     /// bounds (each component in 0..1). A single full-widget view is
     /// `(0, 0, 1, 1)`; tiled / floating viewports are sub-rectangles.
@@ -250,6 +257,20 @@ impl shader::Primitive for Primitive {
             if vp.wire_content_id != inner.cached_wire_id {
                 inner.upload_wires(device, &vp.wires[..], &vp.draw_depths);
                 inner.cached_wire_id = vp.wire_content_id;
+            }
+            // Selection xray overlay — rebuilt when the selection changes or the
+            // underlying wires changed. A pick bumps only selection_generation,
+            // so this refreshes without re-tessellating or re-uploading the main
+            // wire buffers.
+            let sel_key = (vp.wire_content_id, vp.selection_generation);
+            if sel_key != inner.cached_selection {
+                inner.upload_selected_wires(
+                    device,
+                    &vp.wires[..],
+                    &vp.highlight_handles,
+                    &vp.draw_depths,
+                );
+                inner.cached_selection = sel_key;
             }
             let vproj = vp.uniforms.view_proj;
             inner.compute_wire_scissors(vproj, clip_size.width, clip_size.height);
@@ -747,6 +768,8 @@ impl Scene {
             geometry_epoch: self.geometry_epoch,
             camera_generation: self.camera_generation,
             wire_content_id,
+            highlight_handles: self.highlight_handles(),
+            selection_generation: self.selection_generation,
             screen_rect,
         })
     }

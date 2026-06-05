@@ -122,6 +122,11 @@ pub struct Pipeline {
     /// Model-tile tessellation) and `upload_wires` is skipped. `u64::MAX` =
     /// nothing uploaded yet.
     pub cached_wire_id: u64,
+    /// `(wire_content_id, selection_generation)` the selection xray overlay
+    /// (`gpu_selected_wires`) was last built for. Rebuilt when either changes —
+    /// a pick bumps only `selection_generation`, refreshing the overlay without
+    /// touching the main wire buffers.
+    pub cached_selection: (u64, u64),
 }
 
 impl Pipeline {
@@ -891,6 +896,7 @@ impl Pipeline {
             viewcube,
             cached_epoch: (u64::MAX, u64::MAX),
             cached_wire_id: u64::MAX,
+            cached_selection: (u64::MAX, u64::MAX),
         }
     }
 
@@ -925,13 +931,46 @@ impl Pipeline {
             i = j;
         }
         self.gpu_wires = batches;
+    }
 
-        // Full-brightness copies of selected wires, drawn on top of everything
-        // in the selection overlay pass so they're always visible. The xray
-        // pass applies neither scissor nor mesh-edge skip, so all selected
-        // wires batch into one run (None / false) — select-all over a large
-        // drawing no longer costs one draw call per entity. Order preserved.
-        let selected: Vec<WireModel> = wires.iter().filter(|w| w.selected).cloned().collect();
+    /// Build the selection xray overlay: full-brightness copies of the wires
+    /// whose entity handle is in `highlight`, drawn on top so the selection is
+    /// always visible. Selection is no longer baked into the wire tessellation,
+    /// so this is driven by the live highlight set and rebuilt only when the
+    /// selection (or the underlying wire content) changes — picking an entity
+    /// refreshes just this overlay instead of re-tessellating the model. The
+    /// xray pass applies neither scissor nor mesh-edge skip, so everything
+    /// merges into one order-preserving run.
+    pub fn upload_selected_wires(
+        &mut self,
+        device: &wgpu::Device,
+        wires: &[WireModel],
+        highlight: &rustc_hash::FxHashSet<acadrust::Handle>,
+        depth_map: &rustc_hash::FxHashMap<u64, f32>,
+    ) {
+        if highlight.is_empty() {
+            self.gpu_selected_wires = vec![];
+            return;
+        }
+        // Recolor to the selection highlight: the xray pass uses the normal
+        // wire shader (no forced colour), so the highlight now lives here
+        // instead of being baked into the tessellation. Drawn on top with
+        // depth-compare Always, so it overrides the base-coloured main pass.
+        let selected: Vec<WireModel> = wires
+            .iter()
+            .filter(|w| {
+                w.name
+                    .parse::<u64>()
+                    .ok()
+                    .map(acadrust::Handle::new)
+                    .is_some_and(|h| highlight.contains(&h))
+            })
+            .map(|w| {
+                let mut c = w.clone();
+                c.color = WireModel::SELECTED;
+                c
+            })
+            .collect();
         self.gpu_selected_wires = WireGpu::from_run(device, &selected, depth_map, None, false);
     }
 
