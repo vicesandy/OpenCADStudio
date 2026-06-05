@@ -4711,6 +4711,7 @@ impl Scene {
             self.hatches.remove(&h);
             self.meshes.remove(&h);
             self.model_solids.remove(&h);
+            self.mark_entity_dirty(h);
         }
         // Remove erased handles from all groups; delete groups that become empty.
         let group_dict_handle = self.document.header.acad_group_dict_handle;
@@ -4738,7 +4739,9 @@ impl Scene {
             }
             self.document.objects.remove(gh);
         }
-        self.bump_geometry();
+        // Deleting top-level entities/inserts leaves block definitions intact;
+        // the erased handles were already dropped from the memo above.
+        self.bump_geometry_no_blocks();
     }
 
     // ── Group helpers ──────────────────────────────────────────────────────
@@ -4908,7 +4911,13 @@ impl Scene {
                 }
             }
         }
-        self.bump_geometry();
+        // Only the transformed entities changed (a top-level move/rotate/scale/
+        // mirror never edits a block definition) — re-tessellate just those and
+        // keep the block cache + every other entity's memoized wires.
+        for &h in handles {
+            self.mark_entity_dirty(h);
+        }
+        self.bump_geometry_no_blocks();
     }
 
     pub fn copy_entities(&mut self, handles: &[Handle], t: &EntityTransform) -> Vec<Handle> {
@@ -4939,7 +4948,9 @@ impl Scene {
             }
             new_handles.push(h);
         }
-        self.bump_geometry();
+        // The copies are new handles (natural memo misses, tessellated fresh)
+        // and reference only already-cached blocks — no block defn changes.
+        self.bump_geometry_no_blocks();
         new_handles
     }
 

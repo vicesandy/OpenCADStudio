@@ -127,9 +127,13 @@ keyed by a guard hash of the tessellation parameters (tol / view / anno /
 offset / bg / entered viewport); a mismatch (zoom, layout) clears it.
 `bump_geometry` clears it (structural change); incremental edits drop just the
 changed handle via `mark_entity_dirty` and bump with `bump_geometry_no_blocks`.
-So a single-entity edit (line commit, grip commit/cancel) re-tessellates only
-that entity and reuses every other — the per-entity geometry math is skipped
-for the unchanged set. The hit-test (`view_aabb == None`), paper and
+So a single-entity edit (line commit, grip commit/cancel, MOVE / ROTATE /
+SCALE / MIRROR, COPY, ERASE) re-tessellates only the touched entities and
+reuses every other — the per-entity geometry math is skipped for the
+unchanged set. `transform_entities` marks the moved handles dirty,
+`erase_entities` drops the deleted ones, and `copy_entities`' new handles are
+natural memo misses; all use `bump_geometry_no_blocks` so the block cache is
+kept too. The hit-test (`view_aabb == None`), paper and
 per-viewport paths bypass the memo so their cull params don't thrash it.
 
 Remaining: the assembly still concatenates into one `Vec` and rebuilds the
