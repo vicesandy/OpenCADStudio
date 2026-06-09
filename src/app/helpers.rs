@@ -150,6 +150,34 @@ pub(super) fn polar_constrain(pt: glam::Vec3, base: glam::Vec3, step_deg: f32) -
     )
 }
 
+/// Polar constraint that only engages when the cursor is within `tol_px`
+/// screen pixels of the nearest polar ray; otherwise the cursor is left free
+/// so POLAR behaves as if off when pointing away from every angle (issue #70).
+pub(super) fn polar_constrain_near(
+    pt: glam::Vec3,
+    base: glam::Vec3,
+    step_deg: f32,
+    view_proj: glam::Mat4,
+    bounds: iced::Rectangle,
+    tol_px: f32,
+) -> glam::Vec3 {
+    let snapped = polar_constrain(pt, base, step_deg);
+    let to_screen = |w: glam::Vec3| {
+        let ndc = view_proj.project_point3(w);
+        (
+            (ndc.x + 1.0) * 0.5 * bounds.width,
+            (1.0 - ndc.y) * 0.5 * bounds.height,
+        )
+    };
+    let (cx, cy) = to_screen(pt);
+    let (sx, sy) = to_screen(snapped);
+    if ((cx - sx).powi(2) + (cy - sy).powi(2)).sqrt() <= tol_px {
+        snapped
+    } else {
+        pt
+    }
+}
+
 // ── Clipboard / selection helpers ──────────────────────────────────────────
 
 /// Compute the centroid of a set of wire models (average of all points).

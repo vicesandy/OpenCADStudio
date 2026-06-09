@@ -1,5 +1,5 @@
 use super::helpers::{
-    ortho_constrain, parse_coord, polar_constrain, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
+    ortho_constrain, parse_coord, polar_constrain_near, ucs_rotate_vec, ucs_to_wcs, ucs_z_axis,
     CoordKind,
 };
 use super::{Message, OpenCADStudio, POLY_START_DELAY_MS};
@@ -2253,7 +2253,14 @@ impl OpenCADStudio {
                         if self.ortho_mode {
                             snapped = ortho_constrain(snapped, base);
                         } else if self.polar_mode {
-                            snapped = polar_constrain(snapped, base, self.polar_increment_deg);
+                            snapped = polar_constrain_near(
+                                snapped,
+                                base,
+                                self.polar_increment_deg,
+                                vp_mat,
+                                bounds,
+                                self.snapper.snap_radius_px,
+                            );
                         }
                     }
 
@@ -2440,7 +2447,14 @@ impl OpenCADStudio {
                                 if self.ortho_mode {
                                     pt = ortho_constrain(pt, base);
                                 } else if self.polar_mode {
-                                    pt = polar_constrain(pt, base, self.polar_increment_deg);
+                                    pt = polar_constrain_near(
+                                        pt,
+                                        base,
+                                        self.polar_increment_deg,
+                                        view_proj,
+                                        bounds,
+                                        self.snapper.snap_radius_px,
+                                    );
                                 }
                             }
                             pt
@@ -2484,7 +2498,14 @@ impl OpenCADStudio {
                         if let Some(base) = self.last_point {
                             let dx = effective.x - base.x;
                             let dy = effective.y - base.y;
-                            if (dx * dx + dy * dy).sqrt() > 1e-4 {
+                            // Only show the guide while POLAR is actually engaged
+                            // — i.e. the point is snapped onto a polar ray, not
+                            // floating free near no angle (issue #70).
+                            let step = self.polar_increment_deg.to_radians();
+                            let angle = dy.atan2(dx);
+                            let snapped = step > 1e-6
+                                && ((angle / step).round() * step - angle).abs() < 1e-3;
+                            if snapped && (dx * dx + dy * dy).sqrt() > 1e-4 {
                                 let far = 1e5_f32;
                                 let dir = glam::Vec3::new(dx, dy, 0.0).normalize();
                                 let far_pos = base + dir * far;
@@ -2911,7 +2932,14 @@ impl OpenCADStudio {
                             if self.ortho_mode {
                                 pt = ortho_constrain(pt, base);
                             } else if self.polar_mode {
-                                pt = polar_constrain(pt, base, self.polar_increment_deg);
+                                pt = polar_constrain_near(
+                                    pt,
+                                    base,
+                                    self.polar_increment_deg,
+                                    vp_mat,
+                                    bounds,
+                                    self.snapper.snap_radius_px,
+                                );
                             }
                         }
                         pt
