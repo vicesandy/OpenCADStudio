@@ -1,12 +1,12 @@
 // Interactive storm-sewer drafting commands.
 //
-// Both commands collect typed values FIRST (the command line stays focused),
-// then take the viewport interaction LAST and commit from it. This mirrors the
-// OFFSET command's flow and avoids losing command-line focus after a click
-// (which would otherwise route Enter to on_enter and cancel the command).
+// Robust placement: a canvas click ALWAYS places a structure (with the values
+// typed so far, defaults for the rest), so dropping a structure works even if
+// command-line text entry is unavailable. If typed entry works, enter
+// invert/rim/area/C first and then click — the click uses those values.
 //
-// PlaceStructure: enter invert/rim/area/C, then click the location.
-// PlacePipe: enter diameter/n, then click the START and END structures.
+// Pipes are pick-first: click the START structure then the END structure; the
+// pipe commits on the second click with the current diameter/n.
 
 use acadrust::types::Vector3;
 use acadrust::{Circle, EntityType, Handle, Line};
@@ -28,7 +28,7 @@ enum SStep {
     Rim,
     Area,
     C,
-    Point,
+    Ready,
 }
 
 pub struct PlaceStructure {
@@ -71,15 +71,15 @@ impl CadCommand for PlaceStructure {
     }
     fn prompt(&self) -> String {
         match self.step {
-            SStep::Invert => format!("Invert elevation <{:.2}>:", self.invert),
-            SStep::Rim => format!("Rim elevation <{:.2}>:", self.rim),
-            SStep::Area => format!("Drainage area, ac <{:.2}>:", self.area),
-            SStep::C => format!("Runoff coefficient C <{:.2}>:", self.c),
-            SStep::Point => format!("Storm {}: pick location:", data::kind_str(self.kind)),
+            SStep::Invert => format!("Storm {}: invert <{:.2}> (or click to place):", data::kind_str(self.kind), self.invert),
+            SStep::Rim => format!("Rim <{:.2}> (or click to place):", self.rim),
+            SStep::Area => format!("Drainage area, ac <{:.2}> (or click to place):", self.area),
+            SStep::C => format!("Runoff C <{:.2}> (or click to place):", self.c),
+            SStep::Ready => "Click to place the structure:".into(),
         }
     }
     fn wants_text_input(&self) -> bool {
-        !matches!(self.step, SStep::Point)
+        !matches!(self.step, SStep::Ready)
     }
     fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
         let v = parse_num(text);
@@ -94,7 +94,7 @@ impl CadCommand for PlaceStructure {
                 if let Some(x) = v {
                     self.rim = x;
                 }
-                self.step = if self.kind == NodeKind::Outfall { SStep::Point } else { SStep::Area };
+                self.step = if self.kind == NodeKind::Outfall { SStep::Ready } else { SStep::Area };
             }
             SStep::Area => {
                 if let Some(x) = v {
@@ -106,31 +106,25 @@ impl CadCommand for PlaceStructure {
                 if let Some(x) = v {
                     self.c = x;
                 }
-                self.step = SStep::Point;
+                self.step = SStep::Ready;
             }
-            SStep::Point => {}
+            SStep::Ready => {}
         }
-        None // never commit from text; the location click commits
+        None
     }
     fn on_point(&mut self, pt: Vec3) -> CmdResult {
-        if let SStep::Point = self.step {
-            self.commit(pt.x as f64, pt.y as f64)
-        } else {
-            CmdResult::NeedPoint
-        }
+        // A click always places the structure, using whatever values have been
+        // entered (remaining fields keep their defaults).
+        self.commit(pt.x as f64, pt.y as f64)
     }
     fn on_enter(&mut self) -> CmdResult {
-        // Only reached at the Point step (text steps route empty Enter to
-        // on_text_input). Keep waiting for the click rather than cancelling.
         CmdResult::NeedPoint
     }
 }
 
-// ── Pipe placement ──────────────────────────────────────────────────────────
+// ── Pipe placement (pick-first, so clicks always work) ──────────────────────
 
 enum PStep {
-    Diameter,
-    N,
     PickStart,
     PickEnd,
 }
@@ -145,7 +139,7 @@ pub struct PlacePipe {
 
 impl PlacePipe {
     pub fn new() -> Self {
-        Self { step: PStep::Diameter, diameter: 1.25, n: 0.013, start_handle: None, start_xy: (0.0, 0.0) }
+        Self { step: PStep::PickStart, diameter: 1.25, n: 0.013, start_handle: None, start_xy: (0.0, 0.0) }
     }
     fn commit(&self, end_handle: Handle, ex: f64, ey: f64) -> CmdResult {
         let line = Line::from_points(
@@ -171,36 +165,12 @@ impl CadCommand for PlacePipe {
     }
     fn prompt(&self) -> String {
         match self.step {
-            PStep::Diameter => format!("Pipe diameter, ft <{:.2}>:", self.diameter),
-            PStep::N => format!("Manning n <{:.3}>:", self.n),
-            PStep::PickStart => "Pipe: pick START structure:".into(),
-            PStep::PickEnd => "Pipe: pick END structure:".into(),
+            PStep::PickStart => "Pipe: click the START structure:".into(),
+            PStep::PickEnd => format!("Pipe: click the END structure (dia {:.2} ft, n {:.3}):", self.diameter, self.n),
         }
-    }
-    fn wants_text_input(&self) -> bool {
-        matches!(self.step, PStep::Diameter | PStep::N)
-    }
-    fn on_text_input(&mut self, text: &str) -> Option<CmdResult> {
-        let v = parse_num(text);
-        match self.step {
-            PStep::Diameter => {
-                if let Some(x) = v {
-                    self.diameter = x;
-                }
-                self.step = PStep::N;
-            }
-            PStep::N => {
-                if let Some(x) = v {
-                    self.n = x;
-                }
-                self.step = PStep::PickStart;
-            }
-            _ => {}
-        }
-        None
     }
     fn needs_entity_pick(&self) -> bool {
-        matches!(self.step, PStep::PickStart | PStep::PickEnd)
+        true
     }
     fn on_entity_pick(&mut self, handle: Handle, pt: Vec3) -> CmdResult {
         match self.step {
@@ -211,7 +181,6 @@ impl CadCommand for PlacePipe {
                 CmdResult::NeedPoint
             }
             PStep::PickEnd => self.commit(handle, pt.x as f64, pt.y as f64),
-            _ => CmdResult::NeedPoint,
         }
     }
     fn on_point(&mut self, _pt: Vec3) -> CmdResult {
@@ -227,43 +196,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn structure_prompts_then_commits_tagged_circle_on_click() {
+    fn click_places_structure_with_defaults() {
+        // A click commits immediately (no typed values needed).
         let mut cmd = PlaceStructure::inlet();
-        assert!(cmd.wants_text_input(), "should start by asking for invert");
-        assert!(cmd.on_text_input("104").is_none()); // invert -> rim
-        assert!(cmd.on_text_input("110").is_none()); // rim -> area
-        assert!(cmd.on_text_input("2.0").is_none()); // area -> C
-        assert!(cmd.on_text_input("0.8").is_none()); // C -> Point
-        assert!(!cmd.wants_text_input(), "should now wait for the location click");
         match cmd.on_point(Vec3::new(10.0, 20.0, 0.0)) {
             CmdResult::CommitAndExit(EntityType::Circle(c)) => {
                 assert_eq!(c.center.x, 10.0);
                 let e = EntityType::Circle(c);
                 assert!(e.common().extended_data.get_record(data::APP_STRUCT).is_some());
             }
-            _ => panic!("expected CommitAndExit(Circle) with XDATA"),
+            _ => panic!("expected CommitAndExit(Circle)"),
         }
     }
 
     #[test]
-    fn outfall_skips_area_and_c() {
-        let mut cmd = PlaceStructure::outfall();
-        assert!(cmd.on_text_input("100").is_none()); // invert -> rim
-        assert!(cmd.on_text_input("105").is_none()); // rim -> Point (no area/C)
-        assert!(!cmd.wants_text_input());
+    fn typed_values_are_captured_then_click_places() {
+        let mut cmd = PlaceStructure::inlet();
+        assert!(cmd.on_text_input("104").is_none()); // invert -> rim
+        assert!(cmd.on_text_input("110").is_none()); // rim -> area
+        assert!(cmd.on_text_input("2.0").is_none()); // area -> C
+        assert!(cmd.on_text_input("0.8").is_none()); // C -> Ready
+        assert!(matches!(cmd.step, SStep::Ready));
         assert!(matches!(cmd.on_point(Vec3::ZERO), CmdResult::CommitAndExit(_)));
     }
 
     #[test]
-    fn pipe_enters_size_then_connects_two_structures() {
+    fn pipe_connects_two_structures_on_two_clicks() {
         let mut cmd = PlacePipe::new();
-        assert!(cmd.wants_text_input(), "should ask diameter first");
-        assert!(cmd.on_text_input("1.5").is_none()); // diameter -> n
-        assert!(cmd.on_text_input("0.013").is_none()); // n -> PickStart
-        assert!(cmd.needs_entity_pick(), "now picking structures");
-        // pick start at (0,0)
+        assert!(cmd.needs_entity_pick());
         assert!(matches!(cmd.on_entity_pick(Handle::new(1), Vec3::new(0.0, 0.0, 0.0)), CmdResult::NeedPoint));
-        // pick end at (100,0) -> commits a line carrying connectivity XDATA
         match cmd.on_entity_pick(Handle::new(2), Vec3::new(100.0, 0.0, 0.0)) {
             CmdResult::CommitAndExit(EntityType::Line(l)) => {
                 assert_eq!(l.start.x, 0.0);
@@ -271,7 +232,7 @@ mod tests {
                 let e = EntityType::Line(l);
                 assert!(e.common().extended_data.get_record(data::APP_PIPE).is_some());
             }
-            _ => panic!("expected CommitAndExit(Line) with XDATA"),
+            _ => panic!("expected CommitAndExit(Line)"),
         }
     }
 }
