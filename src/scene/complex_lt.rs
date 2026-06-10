@@ -47,6 +47,26 @@ pub fn apply_along(
         return vec![];
     }
 
+    // Guard against pattern blow-up. The per-segment walk below emits at least
+    // one stroke vertex per pattern element, so the total vertex count scales
+    // with `path_len / pattern_len`. On a large-extent drawing (e.g. a city/
+    // street map) carrying a finely-scaled complex linetype, that ratio can
+    // reach billions — the strokes Vec grows until the process is OOM-killed,
+    // single-threaded, before the drawing ever finishes loading. Past a sane
+    // repeat count the dashes are sub-pixel anyway, so render the base wire
+    // solid: returning empty here makes the caller fall back to the solid base.
+    const MAX_PATTERN_REPEATS: f32 = 1_000_000.0;
+    let path_len: f32 = path_pts
+        .windows(2)
+        .map(|w| {
+            let d = [w[1][0] - w[0][0], w[1][1] - w[0][1], w[1][2] - w[0][2]];
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        })
+        .sum();
+    if path_len / pattern_len > MAX_PATTERN_REPEATS {
+        return vec![];
+    }
+
     let mut strokes: Vec<Vec<[f32; 3]>> = Vec::new();
     let mut cur_stroke: Vec<[f32; 3]> = Vec::new();
 

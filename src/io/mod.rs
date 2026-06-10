@@ -323,6 +323,14 @@ pub(crate) fn is_entity_corrupt(e: &EntityType) -> bool {
                 // to a single point in WCS — truck's circle_arc on three
                 // coincident vertices recurses unboundedly in parameter_division.
                 || (a.end_angle - a.start_angle).abs() < 1.0e-9
+                // Near-zero sweep is the same trap with a wider mouth: a tiny but
+                // non-zero sweep (e.g. 1.6e-6 rad) still places start/mid/end
+                // within truck's coincidence tolerance, so parameter_division
+                // recurses and allocates until OOM. Gate on arc *length*
+                // (radius × sweep), not sweep alone, so a legitimately large-
+                // radius small-sweep arc (still a visible curve) survives while
+                // sub-precision arcs are dropped.
+                || a.radius.abs() * (a.end_angle - a.start_angle).abs() < 1.0e-6
                 || !finite_unit_normal(&a.normal)
         }
         E::Ellipse(e) => {
@@ -339,6 +347,27 @@ pub(crate) fn is_entity_corrupt(e: &EntityType) -> bool {
                 }
                 || !e.minor_axis_ratio.is_finite()
                 || e.minor_axis_ratio.abs() < 1.0e-10
+        }
+        E::Spline(s) => {
+            // Parser desync emits exactly-100_000-control-point splines with a
+            // garbage knot vector. Building a truck NURBS/B-spline from one and
+            // tessellating it runs `parameter_division` into an unbounded
+            // allocation — single-threaded, 32 GB+ — long before the drawing
+            // finishes loading. Reject the desync signature plus any spline
+            // truck can't build: non-finite control points, or a knot vector
+            // that's non-finite, non-monotonic, or the wrong length
+            // (truck requires `knots.len() == ctrl.len() + degree + 1`).
+            let n = s.control_points.len();
+            let degree_bad = s.degree < 1;
+            let deg = s.degree.max(0) as usize;
+            let knots_bad = !s.knots.is_empty()
+                && (s.knots.iter().any(|k| !k.is_finite())
+                    || s.knots.windows(2).any(|w| w[1] < w[0])
+                    || s.knots.len() != n + deg + 1);
+            n >= MAX_VERTS
+                || degree_bad
+                || s.control_points.iter().any(|p| !finite_vec3(p))
+                || knots_bad
         }
         _ => false,
     }
@@ -442,5 +471,62 @@ mod layer_roundtrip_tests {
     #[test]
     fn dwg_preserves_multiple_new_layers() {
         assert!(roundtrip_layers("dwg", 3), "DWG dropped colliding new layers (issue #67)");
+    }
+}
+
+#[cfg(test)]
+mod corrupt_guard_tests {
+    use super::*;
+    use acadrust::entities::{Arc, EntityType, Spline};
+    use acadrust::types::Vector3;
+
+    // A near-zero-sweep arc: sweep 1.56e-6 rad on a 3.9e-3 radius. The angles
+    // are individually finite and the radius is in range, so the old
+    // (end-start) < 1e-9 check passed it through — but start/mid/end land
+    // within truck's coincidence tolerance and parameter_division allocates
+    // until OOM. The arc-length floor must reject it.
+    #[test]
+    fn rejects_near_degenerate_arc() {
+        let mut a = Arc::new();
+        a.center = Vector3::new(2880.84, 891.83, 0.0);
+        a.radius = 0.0038974142851181423;
+        a.start_angle = 1.0401656235942365;
+        a.end_angle = 1.0401671831670538;
+        a.normal = Vector3::new(0.0, 0.0, 1.0);
+        assert!(is_entity_corrupt(&EntityType::Arc(a)));
+    }
+
+    // A large-radius small-sweep arc is still a visible curve and must survive:
+    // radius 1e6 × sweep 1e-4 ≈ 100 units of arc.
+    #[test]
+    fn keeps_large_radius_small_sweep_arc() {
+        let mut a = Arc::new();
+        a.radius = 1.0e6;
+        a.start_angle = 0.0;
+        a.end_angle = 1.0e-4;
+        a.normal = Vector3::new(0.0, 0.0, 1.0);
+        assert!(!is_entity_corrupt(&EntityType::Arc(a)));
+    }
+
+    // Parser desync emits 100_000-control-point splines; building a truck
+    // NURBS from one and tessellating it OOMs. The control-point cap rejects it.
+    #[test]
+    fn rejects_desync_spline() {
+        let pts = vec![Vector3::new(0.0, 0.0, 0.0); 100_000];
+        let s = Spline::from_control_points(3, pts);
+        assert!(is_entity_corrupt(&EntityType::Spline(s)));
+    }
+
+    // A normal cubic spline (4 control points, valid clamped knots) survives.
+    #[test]
+    fn keeps_valid_spline() {
+        let pts = vec![
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 1.0, 0.0),
+            Vector3::new(2.0, -1.0, 0.0),
+            Vector3::new(3.0, 0.0, 0.0),
+        ];
+        let s = Spline::from_control_points(3, pts);
+        assert!(!is_entity_corrupt(&EntityType::Spline(s)));
     }
 }
