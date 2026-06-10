@@ -6170,7 +6170,9 @@ impl OpenCADStudio {
             // ── Shared inline rename (all style managers) ─────────────────
             Message::StyleRenameStart(kind, name) => {
                 self.style_rename_start(kind, name);
-                Task::none()
+                // Focus the freshly-shown rename field so the user can type
+                // immediately after the double click.
+                iced::widget::operation::focus(crate::ui::style_list::rename_input_id())
             }
             Message::StyleRenameEdit(s) => {
                 self.style_rename_buf = s;

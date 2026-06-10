@@ -48,12 +48,6 @@ const ACCENT: Color = Color {
     b: 0.85,
     a: 1.0,
 };
-const ACTIVE: Color = Color {
-    r: 0.20,
-    g: 0.40,
-    b: 0.70,
-    a: 1.0,
-};
 const LIST: Color = Color {
     r: 0.12,
     g: 0.12,
@@ -128,11 +122,11 @@ pub fn view<'a, 'b>(s: Scaffold<'a, 'b>) -> Element<'a, Message> {
             crate::ui::style_list::item(
                 name,
                 label,
+                is_sel,
                 s.kind,
                 (s.on_select)(name.clone()),
                 s.rename_active,
                 s.rename_buf,
-                list_item(is_sel),
             )
         })
         .collect();
@@ -218,23 +212,6 @@ fn btn_s(accent: bool) -> impl Fn(&Theme, Status) -> Style {
             width: 1.0,
             radius: 4.0.into(),
         },
-        ..Default::default()
-    }
-}
-
-fn list_item(active: bool) -> impl Fn(&Theme, Status) -> Style {
-    move |_: &Theme, st| Style {
-        background: Some(Background::Color(match (active, st) {
-            (true, _) => ACTIVE,
-            (false, Status::Hovered | Status::Pressed) => Color {
-                r: 0.26,
-                g: 0.26,
-                b: 0.26,
-                a: 1.0,
-            },
-            _ => Color::TRANSPARENT,
-        })),
-        text_color: TEXT,
         ..Default::default()
     }
 }
