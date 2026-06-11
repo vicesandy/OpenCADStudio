@@ -612,6 +612,23 @@ fn fallback_geometry(entity: &EntityType, world_offset: [f64; 3]) -> Geometry {
         EntityType::Insert(ins) => ins.fallback_geometry(world_offset),
         EntityType::Hatch(h) => h.fallback_geometry(world_offset),
         EntityType::Ole2Frame(ole) => ole.fallback_geometry(world_offset),
+        // Modeler solids render as meshes (solid3d_tess). Their wire path
+        // contributes only the pre-computed edge wires (empty for binary SAB)
+        // plus an insertion snap — never the placeholder segment below, which
+        // would otherwise draw a stray 1-unit line at the origin next to the
+        // solid.
+        EntityType::Solid3D(_) | EntityType::Region(_) | EntityType::Body(_) => {
+            let pts = solid_wire_fallback(entity, world_offset);
+            let mut snap = vec![];
+            if let Some(p) = crate::entities::solid3d::point_of_reference(entity) {
+                let [ox, oy, oz] = world_offset;
+                snap.push((
+                    Vec3::new((p.x - ox) as f32, (p.y - oy) as f32, (p.z - oz) as f32),
+                    SnapHint::Insertion,
+                ));
+            }
+            (pts, snap, vec![], vec![])
+        }
         _ => {
             let s = 0.5_f32;
             (vec![[-s, 0.0, 0.0], [s, 0.0, 0.0]], vec![], vec![], vec![])
