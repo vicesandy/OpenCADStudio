@@ -5703,7 +5703,21 @@ impl Scene {
         if self.current_layout != "Model" {
             wires.extend(self.viewport_content_wires(layout_block, None, None));
         }
-        if wires.is_empty() {
+        // 3D solids render as meshes, not wires, so collect their (offset-rel)
+        // XY AABBs separately — a drawing of only solids has no wires to fit.
+        let mesh_aabbs: Vec<[f32; 4]> = self
+            .meshes
+            .iter()
+            .filter(|(h, _)| {
+                self.document
+                    .get_entity(**h)
+                    .map(|e| e.common().owner_handle == layout_block)
+                    .unwrap_or(false)
+            })
+            .map(|(_, set)| set.world_aabb)
+            .filter(|a| a[0].is_finite() && a[2].is_finite())
+            .collect();
+        if wires.is_empty() && mesh_aabbs.is_empty() {
             return;
         }
 
@@ -5743,7 +5757,7 @@ impl Scene {
                 });
             }
         }
-        if cents.is_empty() {
+        if cents.is_empty() && mesh_aabbs.is_empty() {
             return;
         }
 
@@ -5790,6 +5804,11 @@ impl Scene {
                 min = min.min(glam::Vec3::new(x, y, z));
                 max = max.max(glam::Vec3::new(x, y, z));
             }
+        }
+        // Fold in 3D-solid mesh AABBs (not subject to the wire IQR reject).
+        for [ax, ay, bx, by] in &mesh_aabbs {
+            min = min.min(glam::Vec3::new(*ax, *ay, 0.0));
+            max = max.max(glam::Vec3::new(*bx, *by, 0.0));
         }
         // If no usable points found, leave the camera unchanged.
         if min.x > max.x {
