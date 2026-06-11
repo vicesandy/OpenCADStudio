@@ -41,6 +41,20 @@ pub fn tool() -> ToolDef {
 
 // ── Geometry helpers ────────────────────────────────────────────────────────
 
+/// Explode just the polyline family (LwPolyline / Polyline / Polyline2D /
+/// Polyline3D) into Line + Arc segments. No document needed — used where a
+/// polyline must be treated as its constituent edges (e.g. TRIM boundaries).
+/// Returns empty for any other entity type.
+pub fn explode_polyline_segments(entity: &EntityType) -> Vec<EntityType> {
+    match entity {
+        EntityType::LwPolyline(p) => explode_lwpolyline(p),
+        EntityType::Polyline2D(p) => explode_polyline2d(p),
+        EntityType::Polyline(p) => explode_polyline(p),
+        EntityType::Polyline3D(p) => explode_polyline3d(p),
+        _ => vec![],
+    }
+}
+
 /// Decompose an entity into its constituent simple entities.
 /// Returns an empty vec if the entity cannot be exploded.
 pub fn explode_entity(entity: &EntityType, document: &CadDocument) -> Vec<EntityType> {

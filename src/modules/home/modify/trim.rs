@@ -269,11 +269,39 @@ enum Geo {
 }
 
 fn build_geos(entities: &[EntityType]) -> Vec<Geo> {
-    entities
-        .iter()
-        .filter_map(|e| {
-            let h = e.common().handle;
-            match e {
+    let mut out = Vec::new();
+    for e in entities {
+        let h = e.common().handle;
+        match e {
+            // A polyline acts as a boundary through its constituent edges, so
+            // a Line/Arc/… can be trimmed against it. Explode into Line + Arc
+            // segments and tag each with the polyline's own handle (so trim
+            // still excludes it as the click target).
+            EntityType::LwPolyline(_)
+            | EntityType::Polyline(_)
+            | EntityType::Polyline2D(_)
+            | EntityType::Polyline3D(_) => {
+                for seg in crate::modules::home::modify::explode::explode_polyline_segments(e) {
+                    if let Some(g) = geo_from_entity(h, &seg) {
+                        out.push(g);
+                    }
+                }
+            }
+            _ => {
+                if let Some(g) = geo_from_entity(h, e) {
+                    out.push(g);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Convert a simple boundary entity (Line / Arc / Circle / Ray / XLine /
+/// Ellipse / Spline) into a `Geo`, tagged with `h`. Returns `None` for types
+/// that do not act as trim boundaries.
+fn geo_from_entity(h: Handle, e: &EntityType) -> Option<Geo> {
+    match e {
                 EntityType::Line(l) => Some(Geo::Line {
                     handle: h,
                     p1: [l.start.x, l.start.y],
@@ -344,10 +372,8 @@ fn build_geos(entities: &[EntityType]) -> Vec<Geo> {
                         .collect();
                     Some(Geo::Spline { handle: h, segs })
                 }
-                _ => None,
-            }
-        })
-        .collect()
+        _ => None,
+    }
 }
 
 // ── Intersection helpers ──────────────────────────────────────────────────
