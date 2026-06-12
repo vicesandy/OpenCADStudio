@@ -264,6 +264,9 @@ mod windows_impl {
             &format!("\"{exe}\" \"%1\""),
         )?;
         set_string(APP_BASE, Some("FriendlyAppName"), "Open CAD Studio")?;
+        // DefaultIcon is what Windows uses to show the app icon in the
+        // "Open with" context-menu list and the "Choose another app" picker.
+        set_string(&format!(r"{APP_BASE}\DefaultIcon"), None, &format!("\"{exe}\",0"))?;
         // Listing the extensions under SupportedTypes is what makes the app
         // appear in the "Open with → Choose another app" picker for them.
         set_string(&format!(r"{APP_BASE}\SupportedTypes"), Some(".dwg"), "")?;
