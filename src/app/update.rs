@@ -3396,14 +3396,13 @@ impl OpenCADStudio {
                             // Selection filter: keep only allowed types.
                             handles.retain(|&h| self.tabs[i].scene.passes_selection_filter(h));
                             // Accumulate like the box path (issue #83): plain
-                            // lasso adds, Shift+lasso removes, an empty lasso
-                            // clears.
+                            // lasso adds, Shift+lasso removes. An empty lasso
+                            // leaves the current selection untouched so a stray
+                            // drag never discards hard-won picks.
                             if self.shift_down {
                                 for h in &handles {
                                     self.tabs[i].scene.deselect_entity(*h);
                                 }
-                            } else if handles.is_empty() {
-                                self.tabs[i].scene.deselect_all();
                             } else {
                                 for h in &handles {
                                     self.tabs[i].scene.select_entity(*h, false);
@@ -3534,14 +3533,12 @@ impl OpenCADStudio {
                             handles.retain(|&h| self.tabs[i].scene.passes_selection_filter(h));
                             // Accumulate (issue #83): a plain box adds to the
                             // current selection, Shift+box removes the boxed
-                            // entities, and an empty box clears (the two-click
-                            // analogue of clicking empty space).
+                            // entities. An empty box leaves the selection alone
+                            // so an accidental empty drag never discards it.
                             if self.shift_down {
                                 for h in &handles {
                                     self.tabs[i].scene.deselect_entity(*h);
                                 }
-                            } else if handles.is_empty() {
-                                self.tabs[i].scene.deselect_all();
                             } else {
                                 for h in &handles {
                                     self.tabs[i].scene.select_entity(*h, false);
