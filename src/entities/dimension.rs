@@ -1039,11 +1039,14 @@ fn tessellate_dimension_inner(
                 }
             }
         }
-        // DIMTOFL / DIMTIX / DIMATFIT / DIMUPT control autofit behaviour at
-        // dim *creation*. At render time we honour the saved text and arrow
-        // positions, so reading them here is a no-op — they shape geometry
-        // upstream rather than here.
-        let _ = (s.dimtofl, s.dimtix, s.dimatfit, s.dimupt);
+        // Text fit: DIMTIX (force text inside) is honoured in the text-placement
+        // pass (dimension_text_pos_f64), which slides centred text outside the
+        // extension lines when it doesn't fit. DIMTOFL (force the dim line
+        // inside) is already satisfied for linear/aligned, whose dim line is
+        // always drawn between the extension points. DIMATFIT's arrow-outside
+        // modes and DIMUPT (reposition-on-create) still need an arrow autofit
+        // pass — read here for round-trip until then.
+        let _ = (s.dimtofl, s.dimatfit, s.dimupt);
         // DIMTXTDIRECTION (RTL) needs per-instance text mirroring on the Text
         // entity, which the current text struct can't carry. Tracked: read
         // and ignore so the file round-trips on save.
@@ -2472,6 +2475,7 @@ fn vec3_local(v: Vector3, off: [f64; 3]) -> Vec3 {
 /// Style-driven text anchor on the dimension line: a point on the line through
 /// `defpt` parallel to (`ax`,`ay`), slid along it per DIMJUST and lifted by
 /// `perp_off` toward the side the dimension line sits on.
+#[allow(clippy::too_many_arguments)]
 fn text_on_dim_line(
     first: Vector3,
     second: Vector3,
@@ -2480,6 +2484,9 @@ fn text_on_dim_line(
     ay: f64,
     dimjust: i16,
     perp_off: f64,
+    text_w: f64,
+    arrow: f64,
+    dimtix: bool,
 ) -> Vector3 {
     let px = -ay;
     let py = ax;
@@ -2490,11 +2497,21 @@ fn text_on_dim_line(
     let t1 = (first.x - defpt.x) * ax + (first.y - defpt.y) * ay;
     let t2 = (second.x - defpt.x) * ax + (second.y - defpt.y) * ay;
     // DIMJUST: 0=centred, 1/3=near first ext, 2/4=near second ext.
-    let along = match dimjust {
+    let mut along = match dimjust {
         1 | 3 => t1,
         2 | 4 => t2,
         _ => (t1 + t2) * 0.5,
     };
+    // DIMATFIT / DIMTIX fit: when centred text can't fit between the extension
+    // lines, slide it just past the far one (text-outside placement) unless
+    // DIMTIX forces it to stay inside.
+    if dimjust == 0 && !dimtix && text_w > 0.0 {
+        let lo = t1.min(t2);
+        let hi = t1.max(t2);
+        if text_w > (hi - lo) - 2.0 * arrow {
+            along = hi + arrow + text_w * 0.5;
+        }
+    }
     let bx = defpt.x + ax * along;
     let by = defpt.y + ay * along;
     Vector3::new(
@@ -2511,6 +2528,8 @@ fn dimension_text_pos_f64(dim: &Dimension, style: Option<&DimStyle>, text_height
     let dimtad = style.map(|s| s.dimtad).unwrap_or(1);
     let dimgap = style.map(|s| s.dimgap).unwrap_or(0.0);
     let dimjust = style.map(|s| s.dimjust).unwrap_or(0);
+    // DIMTIX forces the text to stay between the extension lines.
+    let dimtix = style.map(|s| s.dimtix).unwrap_or(false);
     // DIMTVP vertical-position multiplier (units of dimtxt). Only honoured when
     // DIMTAD == 0; offsets text perpendicular to the dim line.
     let dimtvp = style.map(|s| s.dimtvp).unwrap_or(0.0);
@@ -2519,6 +2538,11 @@ fn dimension_text_pos_f64(dim: &Dimension, style: Option<&DimStyle>, text_height
     } else {
         text_height * 0.5 + dimgap
     };
+    // Rough text width + arrow allowance, used to decide text-outside fit.
+    let text_w = dimension_text_value(dim, style)
+        .map(|t| t.chars().count() as f64 * text_height * 0.6 + 2.0 * dimgap)
+        .unwrap_or(0.0);
+    let arrow = text_height; // arrows are roughly text-height sized
 
     // Explicit per-entity override (text dragged to a custom location): the
     // saved point wins. Otherwise the dimension style governs placement.
@@ -2542,6 +2566,9 @@ fn dimension_text_pos_f64(dim: &Dimension, style: Option<&DimStyle>, text_height
                 ay,
                 dimjust,
                 perp_off,
+                text_w,
+                arrow,
+                dimtix,
             )
         }
         Dimension::Aligned(d) => {
@@ -2556,6 +2583,9 @@ fn dimension_text_pos_f64(dim: &Dimension, style: Option<&DimStyle>, text_height
                 dy / len,
                 dimjust,
                 perp_off,
+                text_w,
+                arrow,
+                dimtix,
             )
         }
         _ => {
