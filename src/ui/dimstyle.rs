@@ -1,6 +1,6 @@
 //! Dimension Style Manager window — fills the entire OS window.
 
-use crate::app::{DsField, Message};
+use crate::app::{ColorPickTarget, DsField, Message};
 use iced::widget::{
     button, checkbox, column, container, pick_list, row, scrollable, text, text_input, Space,
 };
@@ -308,6 +308,7 @@ pub fn view_window<'a>(
             },
             move |c| Message::DsEdit(f_sel.clone(), crate::ui::color_select::color_to_aci_string(c)),
             Message::DsColorMore(fld.clone()),
+            Message::OpenColorWindow(ColorPickTarget::DimStyle(fld.clone())),
         );
         row![lbl(label), selector]
             .spacing(8)

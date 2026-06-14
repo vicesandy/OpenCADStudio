@@ -465,6 +465,9 @@ impl OpenCADStudio {
                 &self.style_rename_buf,
             );
         }
+        if Some(window_id) == self.color_pick_window {
+            return crate::ui::color_select::color_grid_window(Message::ColorWindowPick);
+        }
         if Some(window_id) == self.shortcuts_window {
             return crate::ui::shortcuts::view_window(&self.shortcut_overrides);
         }

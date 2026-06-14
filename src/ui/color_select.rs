@@ -95,6 +95,7 @@ pub fn color_selector<'a>(
     extras: ColorExtras,
     on_select: impl Fn(AcadColor) -> Message + 'a,
     on_toggle: Message,
+    on_more: Message,
 ) -> Element<'a, Message> {
     let (cur_bg, cur_name) = acad_color_display(current);
 
@@ -150,13 +151,65 @@ pub fn color_selector<'a>(
     for i in 1u8..=9 {
         list = list.push(named_row(AcadColor::Index(i)));
     }
+    // "More…" opens the full ACI palette in a separate window.
+    list = list.push(
+        button(text("More…").size(11).color(TEXT))
+            .on_press(on_more)
+            .style(|_: &Theme, status| button::Style {
+                background: matches!(status, button::Status::Hovered)
+                    .then_some(Background::Color(Color {
+                        r: 0.25,
+                        g: 0.25,
+                        b: 0.30,
+                        a: 1.0,
+                    })),
+                ..Default::default()
+            })
+            .padding([2, 4])
+            .width(Length::Fill),
+    );
 
-    // Full ACI palette grid (10-255) below the named colours.
+    let popup = container(list)
+        .style(|_: &Theme| container::Style {
+            background: Some(Background::Color(PICKER_BG)),
+            border: Border {
+                color: BORDER,
+                width: 1.0,
+                radius: 2.0.into(),
+            },
+            ..Default::default()
+        })
+        .padding(5)
+        .width(220);
+
+    // The popup is shown as a floating overlay (anchored below the button) so
+    // it doesn't push the surrounding form down.
+    Element::new(Floating {
+        base: head.into(),
+        popup: popup.into(),
+    })
+}
+
+/// Full ACI palette as a standalone window body: ByLayer / ByBlock plus the
+/// 256-colour grid. `on_pick` is called with the chosen colour.
+pub fn color_grid_window(on_pick: impl Fn(AcadColor) -> Message) -> Element<'static, Message> {
+    let chip = |color: AcadColor, label: &'static str| -> Element<'static, Message> {
+        let (bg, _) = acad_color_display(color);
+        button(
+            row![swatch(bg), text(label).size(11).color(TEXT)]
+                .spacing(5)
+                .align_y(iced::Center),
+        )
+        .on_press(on_pick(color))
+        .padding([3, 6])
+        .into()
+    };
+
     const COLS: u16 = 16;
-    let mut grid = column![].spacing(1);
+    let mut grid = column![].spacing(2);
     let mut idx: u16 = 1;
     while idx <= 255 {
-        let mut r = row![].spacing(1);
+        let mut r = row![].spacing(2);
         for _ in 0..COLS {
             if idx > 255 {
                 break;
@@ -164,8 +217,8 @@ pub fn color_selector<'a>(
             let ci = idx as u8;
             let (bg, _) = acad_color_display(AcadColor::Index(ci));
             r = r.push(
-                button(text("").width(12).height(12))
-                    .on_press(on_select(AcadColor::Index(ci)))
+                button(text("").width(18).height(18))
+                    .on_press(on_pick(AcadColor::Index(ci)))
                     .style(move |_: &Theme, status| button::Style {
                         background: Some(Background::Color(bg)),
                         border: Border {
@@ -195,25 +248,22 @@ pub fn color_selector<'a>(
         grid = grid.push(r);
     }
 
-    let popup = container(column![list, scrollable(grid).height(120)].spacing(4))
-        .style(|_: &Theme| container::Style {
-            background: Some(Background::Color(PICKER_BG)),
-            border: Border {
-                color: BORDER,
-                width: 1.0,
-                radius: 2.0.into(),
-            },
-            ..Default::default()
-        })
-        .padding(5)
-        .width(220);
-
-    // The popup is shown as a floating overlay (anchored below the button) so
-    // it doesn't push the surrounding form down.
-    Element::new(Floating {
-        base: head.into(),
-        popup: popup.into(),
+    container(
+        column![
+            text("Select Color").size(13).color(TEXT),
+            row![chip(AcadColor::ByLayer, "ByLayer"), chip(AcadColor::ByBlock, "ByBlock")].spacing(6),
+            scrollable(grid).height(Length::Fill),
+        ]
+        .spacing(8),
+    )
+    .style(|_: &Theme| container::Style {
+        background: Some(Background::Color(PICKER_BG)),
+        ..Default::default()
     })
+    .padding(10)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 /// A widget that renders `base` inline and `popup` as a floating overlay

@@ -140,6 +140,7 @@ pub fn view_window<'a>(
                     value: crate::ui::color_select::color_to_aci_string(c),
                 },
                 Message::TableColorMore(row, field),
+                Message::OpenColorWindow(crate::app::ColorPickTarget::Table(row, field)),
             );
             row![text(label).size(11).color(DIM).width(150), selector]
                 .spacing(8)

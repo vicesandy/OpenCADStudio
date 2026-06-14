@@ -149,6 +149,7 @@ fn color_row<'a>(
             value: crate::ui::color_select::color_to_aci_string(c),
         },
         Message::MLeaderColorMore(field),
+        Message::OpenColorWindow(crate::app::ColorPickTarget::MLeader(field)),
     );
     row![text(label).size(11).color(DIM).width(150), selector]
         .spacing(8)

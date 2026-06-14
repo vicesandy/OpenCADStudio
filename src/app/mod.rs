@@ -287,6 +287,9 @@ pub(super) struct OpenCADStudio {
     layout_manager_window: Option<window::Id>,
     plotstyle_window: Option<window::Id>,
     dimstyle_window: Option<window::Id>,
+    /// Standalone "Select Color" palette window + the field it targets.
+    color_pick_window: Option<window::Id>,
+    color_pick_target: Option<ColorPickTarget>,
     shortcuts_window: Option<window::Id>,
     about_window: Option<window::Id>,
     /// New-release notification window — opened on startup when the
@@ -563,6 +566,14 @@ pub(super) enum PendingClose {
     Tab(usize),
     /// User tried to quit the application.
     Quit,
+}
+
+/// Where a colour chosen in the standalone palette window should be applied.
+#[derive(Debug, Clone)]
+pub enum ColorPickTarget {
+    DimStyle(DsField),
+    MLeader(&'static str),
+    Table(u8, &'static str),
 }
 
 /// Identifies a DimStyle field that can be edited in the dialog.
@@ -1267,6 +1278,10 @@ pub enum Message {
     DsToggle(DsField),
     /// Toggle the expanded colour palette for a DimStyle colour field.
     DsColorMore(DsField),
+    /// Open the standalone palette window targeting the given field.
+    OpenColorWindow(ColorPickTarget),
+    /// A colour was chosen in the standalone palette window.
+    ColorWindowPick(acadrust::types::Color),
     /// Set a block/linetype Handle field on the selected dim style from a
     /// dropdown of available block-records / linetypes (by name).
     DsSetHandle {
@@ -1377,6 +1392,8 @@ impl OpenCADStudio {
             layout_manager_window: None,
             plotstyle_window: None,
             dimstyle_window: None,
+            color_pick_window: None,
+            color_pick_target: None,
             shortcuts_window: None,
             about_window: None,
             update_notice_window: None,
@@ -1655,6 +1672,9 @@ pub fn run() -> iced::Result {
     .title(|state: &OpenCADStudio, window_id: window::Id| {
         if Some(window_id) == state.layer_window {
             return "Layer Properties Manager".into();
+        }
+        if Some(window_id) == state.color_pick_window {
+            return "Select Color".into();
         }
         if Some(window_id) == state.page_setup_window {
             return "Page Setup".into();

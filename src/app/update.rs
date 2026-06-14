@@ -1624,6 +1624,10 @@ impl OpenCADStudio {
                     self.dimstyle_window = None;
                     self.ribbon.deactivate_tool_if("DIMSTYLE");
                 }
+                if self.color_pick_window == Some(id) {
+                    self.color_pick_window = None;
+                    self.color_pick_target = None;
+                }
                 if self.shortcuts_window == Some(id) {
                     self.shortcuts_window = None;
                     self.ribbon.deactivate_tool_if("SHORTCUTS");
@@ -7320,6 +7324,48 @@ impl OpenCADStudio {
                     Some(field)
                 };
                 Task::none()
+            }
+            Message::OpenColorWindow(target) => {
+                self.color_pick_target = Some(target);
+                self.ds_color_open = None;
+                self.mls_color_open = None;
+                self.ts_color_open = None;
+                if let Some(id) = self.color_pick_window {
+                    return window::gain_focus(id);
+                }
+                let (id, task) = window::open(window::Settings {
+                    size: iced::Size::new(420.0, 470.0),
+                    resizable: true,
+                    level: window::Level::AlwaysOnTop,
+                    ..Default::default()
+                });
+                self.color_pick_window = Some(id);
+                task.map(|_| Message::Noop)
+            }
+            Message::ColorWindowPick(color) => {
+                let s = crate::ui::color_select::color_to_aci_string(color);
+                let edit = match self.color_pick_target.take() {
+                    Some(crate::app::ColorPickTarget::DimStyle(f)) => Some(Message::DsEdit(f, s)),
+                    Some(crate::app::ColorPickTarget::MLeader(f)) => {
+                        Some(Message::MLeaderStyleEdit { field: f, value: s })
+                    }
+                    Some(crate::app::ColorPickTarget::Table(r, f)) => {
+                        Some(Message::TableStyleCellEdit {
+                            row: r,
+                            field: f,
+                            value: s,
+                        })
+                    }
+                    None => None,
+                };
+                let mut tasks = Vec::new();
+                if let Some(m) = edit {
+                    tasks.push(self.update(m));
+                }
+                if let Some(id) = self.color_pick_window.take() {
+                    tasks.push(window::close(id));
+                }
+                Task::batch(tasks)
             }
             Message::DsSetHandle { field, value } => {
                 let i = self.active_tab;
