@@ -40,329 +40,6 @@ impl std::fmt::Display for RenderModeChoice {
 impl OpenCADStudio {
     pub fn view(&self, window_id: window::Id) -> Element<'_, Message> {
         // ── Floating panel windows ─────────────────────────────────────────
-        if Some(window_id) == self.tablestyle_window {
-            use acadrust::objects::ObjectType;
-            let tab = &self.tabs[self.active_tab];
-            let styles: Vec<String> = tab
-                .scene
-                .document
-                .objects
-                .values()
-                .filter_map(|o| {
-                    if let ObjectType::TableStyle(s) = o {
-                        Some(s.name.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let selected_style = tab.scene.document.objects.values().find_map(|o| {
-                if let ObjectType::TableStyle(s) = o {
-                    if s.name == self.tablestyle_selected {
-                        Some(s)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            });
-            return crate::ui::tablestyle::view_window(
-                styles,
-                &self.tablestyle_selected,
-                &self.ribbon.active_table_style,
-                selected_style,
-                &self.ts_hmargin,
-                &self.ts_vmargin,
-                &self.ts_description,
-                &self.ts_cell_textstyle,
-                &self.ts_cell_height,
-                &self.ts_cell_textcolor,
-                &self.ts_cell_fillcolor,
-                &self.ts_cell_datatype,
-                &self.ts_cell_unittype,
-                &self.ts_cell_format,
-                &self.ts_border_lw,
-                &self.ts_border_color,
-                &self.ts_border_spacing,
-                self.style_rename.as_deref(),
-                &self.style_rename_buf,
-                self.ts_color_open,
-            );
-        }
-        if Some(window_id) == self.mleaderstyle_window {
-            use acadrust::objects::ObjectType;
-            let tab = &self.tabs[self.active_tab];
-            let styles: Vec<String> = tab
-                .scene
-                .document
-                .objects
-                .values()
-                .filter_map(|o| {
-                    if let ObjectType::MultiLeaderStyle(s) = o {
-                        Some(s.name.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let selected_style = tab.scene.document.objects.values().find_map(|o| {
-                if let ObjectType::MultiLeaderStyle(s) = o {
-                    if s.name == self.mleaderstyle_selected {
-                        Some(s)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            });
-            let doc = &tab.scene.document;
-            let mut block_opts: Vec<String> = vec!["None".to_string()];
-            block_opts.extend(doc.block_records.iter().map(|b| b.name.clone()));
-            let mut lt_opts: Vec<String> = vec!["None".to_string()];
-            lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
-            let mut textstyle_opts: Vec<String> = vec!["None".to_string()];
-            textstyle_opts.extend(doc.text_styles.iter().map(|t| t.name.clone()));
-            let opt_block = |h: Option<acadrust::types::Handle>| -> String {
-                match h {
-                    Some(h) => doc
-                        .block_records
-                        .iter()
-                        .find(|b| b.handle == h)
-                        .map(|b| b.name.clone())
-                        .unwrap_or_else(|| "None".to_string()),
-                    None => "None".to_string(),
-                }
-            };
-            let opt_lt = |h: Option<acadrust::types::Handle>| -> String {
-                match h {
-                    Some(h) => doc
-                        .line_types
-                        .iter()
-                        .find(|lt| lt.handle == h)
-                        .map(|lt| lt.name.clone())
-                        .unwrap_or_else(|| "None".to_string()),
-                    None => "None".to_string(),
-                }
-            };
-            let opt_ts = |h: Option<acadrust::types::Handle>| -> String {
-                match h {
-                    Some(h) => doc
-                        .text_styles
-                        .iter()
-                        .find(|t| t.handle == h)
-                        .map(|t| t.name.clone())
-                        .unwrap_or_else(|| "None".to_string()),
-                    None => "None".to_string(),
-                }
-            };
-            let (line_type_name, arrowhead_name, text_style_name, block_content_name) =
-                match selected_style {
-                    Some(s) => (
-                        opt_lt(s.line_type_handle),
-                        opt_block(s.arrowhead_handle),
-                        opt_ts(s.text_style_handle),
-                        opt_block(s.block_content_handle),
-                    ),
-                    None => Default::default(),
-                };
-            return crate::ui::mleaderstyle::view_window(
-                crate::ui::mleaderstyle::MLeaderStyleView {
-                    styles,
-                    selected: &self.mleaderstyle_selected,
-                    style: selected_style,
-                    current: tab.active_mleader_style.clone(),
-                    landing_distance: &self.mls_landing_distance,
-                    landing_gap: &self.mls_landing_gap,
-                    arrowhead_size: &self.mls_arrowhead_size,
-                    text_height: &self.mls_text_height,
-                    scale_factor: &self.mls_scale_factor,
-                    break_gap: &self.mls_break_gap,
-                    first_seg_angle: &self.mls_first_seg_angle,
-                    second_seg_angle: &self.mls_second_seg_angle,
-                    max_points: &self.mls_max_points,
-                    default_text: &self.mls_default_text,
-                    line_color: &self.mls_line_color,
-                    text_color: &self.mls_text_color,
-                    description: &self.mls_description,
-                    line_weight: &self.mls_line_weight,
-                    align_space: &self.mls_align_space,
-                    block_color: &self.mls_block_color,
-                    block_rotation: &self.mls_block_rotation,
-                    block_scale_x: &self.mls_block_scale_x,
-                    block_scale_y: &self.mls_block_scale_y,
-                    block_scale_z: &self.mls_block_scale_z,
-                    block_opts,
-                    lt_opts,
-                    textstyle_opts,
-                    line_type_name,
-                    arrowhead_name,
-                    text_style_name,
-                    block_content_name,
-                    rename_active: self.style_rename.as_deref(),
-                    rename_buf: &self.style_rename_buf,
-                    color_open: self.mls_color_open,
-                },
-            );
-        }
-        if Some(window_id) == self.dimstyle_window {
-            let tab = &self.tabs[self.active_tab];
-            let styles: Vec<String> = tab
-                .scene
-                .document
-                .dim_styles
-                .iter()
-                .map(|s| s.name.clone())
-                .collect();
-            let doc = &tab.scene.document;
-            // Dropdown options (names must match the records exactly so the
-            // selection can be resolved back to a handle on the update side).
-            let mut block_opts: Vec<String> = vec!["Default".to_string()];
-            block_opts.extend(doc.block_records.iter().map(|b| b.name.clone()));
-            let mut lt_opts: Vec<String> = vec!["ByBlock".to_string()];
-            lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
-            let blk_name = |h: acadrust::types::Handle| -> String {
-                if h.is_null() {
-                    "Default".to_string()
-                } else {
-                    doc.block_records
-                        .iter()
-                        .find(|b| b.handle == h)
-                        .map(|b| b.name.clone())
-                        .unwrap_or_else(|| "Default".to_string())
-                }
-            };
-            let lt_name = |h: acadrust::types::Handle| -> String {
-                if h.is_null() {
-                    "ByBlock".to_string()
-                } else {
-                    doc.line_types
-                        .iter()
-                        .find(|lt| lt.handle == h)
-                        .map(|lt| lt.name.clone())
-                        .unwrap_or_else(|| "ByBlock".to_string())
-                }
-            };
-            let ds_sel = doc.dim_styles.get(&self.dimstyle_selected);
-            let (
-                dimblk_name,
-                dimblk1_name,
-                dimblk2_name,
-                dimldrblk_name,
-                dimltex_name,
-                dimltex1_name,
-                dimltex2_name,
-            ) = match ds_sel {
-                Some(d) => (
-                    blk_name(d.dimblk),
-                    blk_name(d.dimblk1),
-                    blk_name(d.dimblk2),
-                    blk_name(d.dimldrblk),
-                    lt_name(d.dimltex_handle),
-                    lt_name(d.dimltex1_handle),
-                    lt_name(d.dimltex2_handle),
-                ),
-                None => Default::default(),
-            };
-            return crate::ui::dimstyle::view_window(
-                styles,
-                &self.dimstyle_selected,
-                &self.tabs[self.active_tab]
-                    .scene
-                    .document
-                    .header
-                    .current_dimstyle_name,
-                self.dimstyle_tab,
-                crate::ui::dimstyle::DimStyleValues {
-                    dimdle: &self.ds_dimdle,
-                    dimdli: &self.ds_dimdli,
-                    dimgap: &self.ds_dimgap,
-                    dimexe: &self.ds_dimexe,
-                    dimexo: &self.ds_dimexo,
-                    dimsd1: self.ds_dimsd1,
-                    dimsd2: self.ds_dimsd2,
-                    dimse1: self.ds_dimse1,
-                    dimse2: self.ds_dimse2,
-                    dimasz: &self.ds_dimasz,
-                    dimcen: &self.ds_dimcen,
-                    dimtsz: &self.ds_dimtsz,
-                    dimtxt: &self.ds_dimtxt,
-                    dimtxsty: &self.ds_dimtxsty,
-                    dimtad: &self.ds_dimtad,
-                    dimtih: self.ds_dimtih,
-                    dimtoh: self.ds_dimtoh,
-                    dimscale: &self.ds_dimscale,
-                    dimlfac: &self.ds_dimlfac,
-                    dimlunit: &self.ds_dimlunit,
-                    dimdec: &self.ds_dimdec,
-                    dimpost: &self.ds_dimpost,
-                    dimtol: self.ds_dimtol,
-                    dimlim: self.ds_dimlim,
-                    dimtp: &self.ds_dimtp,
-                    dimtm: &self.ds_dimtm,
-                    dimtdec: &self.ds_dimtdec,
-                    dimtfac: &self.ds_dimtfac,
-                    annotative: self.ds_annotative,
-                    dimclrd: &self.ds_dimclrd,
-                    dimlwd: &self.ds_dimlwd,
-                    dimclre: &self.ds_dimclre,
-                    dimlwe: &self.ds_dimlwe,
-                    dimfxl: &self.ds_dimfxl,
-                    dimfxlon: self.ds_dimfxlon,
-                    dimsah: self.ds_dimsah,
-                    dimarcsym: &self.ds_dimarcsym,
-                    dimjogang: &self.ds_dimjogang,
-                    dimclrt: &self.ds_dimclrt,
-                    dimjust: &self.ds_dimjust,
-                    dimtvp: &self.ds_dimtvp,
-                    dimtfill: &self.ds_dimtfill,
-                    dimtfillclr: &self.ds_dimtfillclr,
-                    dimtxtdirection: self.ds_dimtxtdirection,
-                    dimatfit: &self.ds_dimatfit,
-                    dimtix: self.ds_dimtix,
-                    dimsoxd: self.ds_dimsoxd,
-                    dimtmove: &self.ds_dimtmove,
-                    dimupt: self.ds_dimupt,
-                    dimtofl: self.ds_dimtofl,
-                    dimfit: &self.ds_dimfit,
-                    dimdsep: &self.ds_dimdsep,
-                    dimrnd: &self.ds_dimrnd,
-                    dimzin: &self.ds_dimzin,
-                    dimfrac: &self.ds_dimfrac,
-                    dimaunit: &self.ds_dimaunit,
-                    dimadec: &self.ds_dimadec,
-                    dimunit: &self.ds_dimunit,
-                    dimazin: &self.ds_dimazin,
-                    dimalt: self.ds_dimalt,
-                    dimaltf: &self.ds_dimaltf,
-                    dimaltd: &self.ds_dimaltd,
-                    dimaltu: &self.ds_dimaltu,
-                    dimalttd: &self.ds_dimalttd,
-                    dimaltrnd: &self.ds_dimaltrnd,
-                    dimapost: &self.ds_dimapost,
-                    dimaltz: &self.ds_dimaltz,
-                    dimalttz: &self.ds_dimalttz,
-                    dimtolj: &self.ds_dimtolj,
-                    dimtzin: &self.ds_dimtzin,
-                    dimblk_name,
-                    dimblk1_name,
-                    dimblk2_name,
-                    dimldrblk_name,
-                    dimltex_name,
-                    dimltex1_name,
-                    dimltex2_name,
-                    block_opts,
-                    lt_opts,
-                    color_open: self.ds_color_open.clone(),
-                },
-                self.style_rename.as_deref(),
-                &self.style_rename_buf,
-            );
-        }
-        if Some(window_id) == self.color_pick_window {
-            return crate::ui::color_select::color_grid_window(Message::ColorWindowPick);
-        }
         if Some(window_id) == self.assoc_prompt_window {
             return default_assoc_dialog_window();
         }
@@ -1398,9 +1075,24 @@ impl OpenCADStudio {
         // ── In-canvas modal dialogs (Plan B) ───────────────────────────────
         // Former pop-up windows render as overlays here, so they work on both
         // the native (single main window) and web builds.
-        match self.modal_content() {
+        let base: Element<'_, Message> = match self.modal_content() {
             Some(content) => crate::ui::modal::modal(composed, content, Message::CloseModal),
             None => composed.into(),
+        };
+        // The colour picker is a nested modal: it stacks over whichever dialog
+        // (style editor, properties, …) requested it.
+        if self.color_pick_target.is_some() {
+            crate::ui::modal::modal(
+                base,
+                iced::widget::container(crate::ui::color_select::color_grid_window(
+                    Message::ColorWindowPick,
+                ))
+                .width(iced::Length::Fixed(420.0))
+                .height(iced::Length::Fixed(470.0)),
+                Message::CloseColorPicker,
+            )
+        } else {
+            base
         }
     }
 
@@ -1540,9 +1232,315 @@ impl OpenCADStudio {
                     420,
                 )
             }
-            super::ModalKind::TableStyle
-            | super::ModalKind::MLeaderStyle
-            | super::ModalKind::DimStyle => return None,
+            super::ModalKind::TableStyle => {
+                use acadrust::objects::ObjectType;
+                let tab = &self.tabs[self.active_tab];
+                let styles: Vec<String> = tab
+                    .scene
+                    .document
+                    .objects
+                    .values()
+                    .filter_map(|o| match o {
+                        ObjectType::TableStyle(s) => Some(s.name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                let selected_style = tab.scene.document.objects.values().find_map(|o| match o {
+                    ObjectType::TableStyle(s) if s.name == self.tablestyle_selected => Some(s),
+                    _ => None,
+                });
+                sized(
+                    crate::ui::tablestyle::view_window(
+                        styles,
+                        &self.tablestyle_selected,
+                        &self.ribbon.active_table_style,
+                        selected_style,
+                        &self.ts_hmargin,
+                        &self.ts_vmargin,
+                        &self.ts_description,
+                        &self.ts_cell_textstyle,
+                        &self.ts_cell_height,
+                        &self.ts_cell_textcolor,
+                        &self.ts_cell_fillcolor,
+                        &self.ts_cell_datatype,
+                        &self.ts_cell_unittype,
+                        &self.ts_cell_format,
+                        &self.ts_border_lw,
+                        &self.ts_border_color,
+                        &self.ts_border_spacing,
+                        self.style_rename.as_deref(),
+                        &self.style_rename_buf,
+                        self.ts_color_open,
+                    ),
+                    620,
+                    420,
+                )
+            }
+            super::ModalKind::MLeaderStyle => {
+                use acadrust::objects::ObjectType;
+                let tab = &self.tabs[self.active_tab];
+                let styles: Vec<String> = tab
+                    .scene
+                    .document
+                    .objects
+                    .values()
+                    .filter_map(|o| match o {
+                        ObjectType::MultiLeaderStyle(s) => Some(s.name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                let selected_style = tab.scene.document.objects.values().find_map(|o| match o {
+                    ObjectType::MultiLeaderStyle(s) if s.name == self.mleaderstyle_selected => {
+                        Some(s)
+                    }
+                    _ => None,
+                });
+                let doc = &tab.scene.document;
+                let mut block_opts: Vec<String> = vec!["None".to_string()];
+                block_opts.extend(doc.block_records.iter().map(|b| b.name.clone()));
+                let mut lt_opts: Vec<String> = vec!["None".to_string()];
+                lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
+                let mut textstyle_opts: Vec<String> = vec!["None".to_string()];
+                textstyle_opts.extend(doc.text_styles.iter().map(|t| t.name.clone()));
+                let opt_block = |h: Option<acadrust::types::Handle>| -> String {
+                    match h {
+                        Some(h) => doc
+                            .block_records
+                            .iter()
+                            .find(|b| b.handle == h)
+                            .map(|b| b.name.clone())
+                            .unwrap_or_else(|| "None".to_string()),
+                        None => "None".to_string(),
+                    }
+                };
+                let opt_lt = |h: Option<acadrust::types::Handle>| -> String {
+                    match h {
+                        Some(h) => doc
+                            .line_types
+                            .iter()
+                            .find(|lt| lt.handle == h)
+                            .map(|lt| lt.name.clone())
+                            .unwrap_or_else(|| "None".to_string()),
+                        None => "None".to_string(),
+                    }
+                };
+                let opt_ts = |h: Option<acadrust::types::Handle>| -> String {
+                    match h {
+                        Some(h) => doc
+                            .text_styles
+                            .iter()
+                            .find(|t| t.handle == h)
+                            .map(|t| t.name.clone())
+                            .unwrap_or_else(|| "None".to_string()),
+                        None => "None".to_string(),
+                    }
+                };
+                let (line_type_name, arrowhead_name, text_style_name, block_content_name) =
+                    match selected_style {
+                        Some(s) => (
+                            opt_lt(s.line_type_handle),
+                            opt_block(s.arrowhead_handle),
+                            opt_ts(s.text_style_handle),
+                            opt_block(s.block_content_handle),
+                        ),
+                        None => Default::default(),
+                    };
+                sized(
+                    crate::ui::mleaderstyle::view_window(crate::ui::mleaderstyle::MLeaderStyleView {
+                        styles,
+                        selected: &self.mleaderstyle_selected,
+                        style: selected_style,
+                        current: tab.active_mleader_style.clone(),
+                        landing_distance: &self.mls_landing_distance,
+                        landing_gap: &self.mls_landing_gap,
+                        arrowhead_size: &self.mls_arrowhead_size,
+                        text_height: &self.mls_text_height,
+                        scale_factor: &self.mls_scale_factor,
+                        break_gap: &self.mls_break_gap,
+                        first_seg_angle: &self.mls_first_seg_angle,
+                        second_seg_angle: &self.mls_second_seg_angle,
+                        max_points: &self.mls_max_points,
+                        default_text: &self.mls_default_text,
+                        line_color: &self.mls_line_color,
+                        text_color: &self.mls_text_color,
+                        description: &self.mls_description,
+                        line_weight: &self.mls_line_weight,
+                        align_space: &self.mls_align_space,
+                        block_color: &self.mls_block_color,
+                        block_rotation: &self.mls_block_rotation,
+                        block_scale_x: &self.mls_block_scale_x,
+                        block_scale_y: &self.mls_block_scale_y,
+                        block_scale_z: &self.mls_block_scale_z,
+                        block_opts,
+                        lt_opts,
+                        textstyle_opts,
+                        line_type_name,
+                        arrowhead_name,
+                        text_style_name,
+                        block_content_name,
+                        rename_active: self.style_rename.as_deref(),
+                        rename_buf: &self.style_rename_buf,
+                        color_open: self.mls_color_open,
+                    }),
+                    560,
+                    560,
+                )
+            }
+            super::ModalKind::DimStyle => {
+
+            let tab = &self.tabs[self.active_tab];
+            let styles: Vec<String> = tab
+                .scene
+                .document
+                .dim_styles
+                .iter()
+                .map(|s| s.name.clone())
+                .collect();
+            let doc = &tab.scene.document;
+            // Dropdown options (names must match the records exactly so the
+            // selection can be resolved back to a handle on the update side).
+            let mut block_opts: Vec<String> = vec!["Default".to_string()];
+            block_opts.extend(doc.block_records.iter().map(|b| b.name.clone()));
+            let mut lt_opts: Vec<String> = vec!["ByBlock".to_string()];
+            lt_opts.extend(doc.line_types.iter().map(|lt| lt.name.clone()));
+            let blk_name = |h: acadrust::types::Handle| -> String {
+                if h.is_null() {
+                    "Default".to_string()
+                } else {
+                    doc.block_records
+                        .iter()
+                        .find(|b| b.handle == h)
+                        .map(|b| b.name.clone())
+                        .unwrap_or_else(|| "Default".to_string())
+                }
+            };
+            let lt_name = |h: acadrust::types::Handle| -> String {
+                if h.is_null() {
+                    "ByBlock".to_string()
+                } else {
+                    doc.line_types
+                        .iter()
+                        .find(|lt| lt.handle == h)
+                        .map(|lt| lt.name.clone())
+                        .unwrap_or_else(|| "ByBlock".to_string())
+                }
+            };
+            let ds_sel = doc.dim_styles.get(&self.dimstyle_selected);
+            let (
+                dimblk_name,
+                dimblk1_name,
+                dimblk2_name,
+                dimldrblk_name,
+                dimltex_name,
+                dimltex1_name,
+                dimltex2_name,
+            ) = match ds_sel {
+                Some(d) => (
+                    blk_name(d.dimblk),
+                    blk_name(d.dimblk1),
+                    blk_name(d.dimblk2),
+                    blk_name(d.dimldrblk),
+                    lt_name(d.dimltex_handle),
+                    lt_name(d.dimltex1_handle),
+                    lt_name(d.dimltex2_handle),
+                ),
+                None => Default::default(),
+            };
+            sized(crate::ui::dimstyle::view_window(
+                styles,
+                &self.dimstyle_selected,
+                &self.tabs[self.active_tab]
+                    .scene
+                    .document
+                    .header
+                    .current_dimstyle_name,
+                self.dimstyle_tab,
+                crate::ui::dimstyle::DimStyleValues {
+                    dimdle: &self.ds_dimdle,
+                    dimdli: &self.ds_dimdli,
+                    dimgap: &self.ds_dimgap,
+                    dimexe: &self.ds_dimexe,
+                    dimexo: &self.ds_dimexo,
+                    dimsd1: self.ds_dimsd1,
+                    dimsd2: self.ds_dimsd2,
+                    dimse1: self.ds_dimse1,
+                    dimse2: self.ds_dimse2,
+                    dimasz: &self.ds_dimasz,
+                    dimcen: &self.ds_dimcen,
+                    dimtsz: &self.ds_dimtsz,
+                    dimtxt: &self.ds_dimtxt,
+                    dimtxsty: &self.ds_dimtxsty,
+                    dimtad: &self.ds_dimtad,
+                    dimtih: self.ds_dimtih,
+                    dimtoh: self.ds_dimtoh,
+                    dimscale: &self.ds_dimscale,
+                    dimlfac: &self.ds_dimlfac,
+                    dimlunit: &self.ds_dimlunit,
+                    dimdec: &self.ds_dimdec,
+                    dimpost: &self.ds_dimpost,
+                    dimtol: self.ds_dimtol,
+                    dimlim: self.ds_dimlim,
+                    dimtp: &self.ds_dimtp,
+                    dimtm: &self.ds_dimtm,
+                    dimtdec: &self.ds_dimtdec,
+                    dimtfac: &self.ds_dimtfac,
+                    annotative: self.ds_annotative,
+                    dimclrd: &self.ds_dimclrd,
+                    dimlwd: &self.ds_dimlwd,
+                    dimclre: &self.ds_dimclre,
+                    dimlwe: &self.ds_dimlwe,
+                    dimfxl: &self.ds_dimfxl,
+                    dimfxlon: self.ds_dimfxlon,
+                    dimsah: self.ds_dimsah,
+                    dimarcsym: &self.ds_dimarcsym,
+                    dimjogang: &self.ds_dimjogang,
+                    dimclrt: &self.ds_dimclrt,
+                    dimjust: &self.ds_dimjust,
+                    dimtvp: &self.ds_dimtvp,
+                    dimtfill: &self.ds_dimtfill,
+                    dimtfillclr: &self.ds_dimtfillclr,
+                    dimtxtdirection: self.ds_dimtxtdirection,
+                    dimatfit: &self.ds_dimatfit,
+                    dimtix: self.ds_dimtix,
+                    dimsoxd: self.ds_dimsoxd,
+                    dimtmove: &self.ds_dimtmove,
+                    dimupt: self.ds_dimupt,
+                    dimtofl: self.ds_dimtofl,
+                    dimfit: &self.ds_dimfit,
+                    dimdsep: &self.ds_dimdsep,
+                    dimrnd: &self.ds_dimrnd,
+                    dimzin: &self.ds_dimzin,
+                    dimfrac: &self.ds_dimfrac,
+                    dimaunit: &self.ds_dimaunit,
+                    dimadec: &self.ds_dimadec,
+                    dimunit: &self.ds_dimunit,
+                    dimazin: &self.ds_dimazin,
+                    dimalt: self.ds_dimalt,
+                    dimaltf: &self.ds_dimaltf,
+                    dimaltd: &self.ds_dimaltd,
+                    dimaltu: &self.ds_dimaltu,
+                    dimalttd: &self.ds_dimalttd,
+                    dimaltrnd: &self.ds_dimaltrnd,
+                    dimapost: &self.ds_dimapost,
+                    dimaltz: &self.ds_dimaltz,
+                    dimalttz: &self.ds_dimalttz,
+                    dimtolj: &self.ds_dimtolj,
+                    dimtzin: &self.ds_dimtzin,
+                    dimblk_name,
+                    dimblk1_name,
+                    dimblk2_name,
+                    dimldrblk_name,
+                    dimltex_name,
+                    dimltex1_name,
+                    dimltex2_name,
+                    block_opts,
+                    lt_opts,
+                    color_open: self.ds_color_open.clone(),
+                },
+                self.style_rename.as_deref(),
+                &self.style_rename_buf,
+            ), 720, 560)
+            }
         })
     }
 

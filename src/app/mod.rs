@@ -1321,6 +1321,8 @@ pub enum Message {
     DsColorMore(DsField),
     /// Open the standalone palette window targeting the given field.
     OpenColorWindow(ColorPickTarget),
+    /// Close the nested colour-picker modal without choosing (Plan B).
+    CloseColorPicker,
     /// A colour was chosen in the standalone palette window.
     ColorWindowPick(acadrust::types::Color),
     /// Set a block/linetype Handle field on the selected dim style from a

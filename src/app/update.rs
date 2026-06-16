@@ -6490,22 +6490,13 @@ impl OpenCADStudio {
                 if let Some(id) = self.tablestyle_window {
                     return window::gain_focus(id);
                 }
-                let (id, task) = window::open(window::Settings {
-                    size: iced::Size::new(620.0, 420.0),
-                    resizable: true,
-                    level: window::Level::AlwaysOnTop,
-                    ..Default::default()
-                });
-                self.tablestyle_window = Some(id);
+                self.active_modal = Some(super::ModalKind::TableStyle);
                 self.style_stage_begin();
-                task.map(|_| Message::Noop)
+                Task::none()
             }
             Message::TableStyleDialogClose => {
-                if let Some(id) = self.tablestyle_window.take() {
-                    window::close(id)
-                } else {
-                    Task::none()
-                }
+                self.active_modal = None;
+                Task::none()
             }
             Message::TableStyleDialogSelect(name) => {
                 self.tablestyle_selected = name;
@@ -6903,22 +6894,13 @@ impl OpenCADStudio {
                 if let Some(id) = self.mleaderstyle_window {
                     return window::gain_focus(id);
                 }
-                let (id, task) = window::open(window::Settings {
-                    size: iced::Size::new(560.0, 560.0),
-                    resizable: true,
-                    level: window::Level::AlwaysOnTop,
-                    ..Default::default()
-                });
-                self.mleaderstyle_window = Some(id);
+                self.active_modal = Some(super::ModalKind::MLeaderStyle);
                 self.style_stage_begin();
-                task.map(|_| Message::Noop)
+                Task::none()
             }
             Message::MLeaderStyleDialogClose => {
-                if let Some(id) = self.mleaderstyle_window.take() {
-                    window::close(id)
-                } else {
-                    Task::none()
-                }
+                self.active_modal = None;
+                Task::none()
             }
             Message::MLeaderStyleDialogSelect(name) => {
                 self.mleaderstyle_selected = name;
@@ -7260,22 +7242,13 @@ impl OpenCADStudio {
                 if let Some(id) = self.dimstyle_window {
                     return window::gain_focus(id);
                 }
-                let (id, task) = window::open(window::Settings {
-                    size: iced::Size::new(720.0, 560.0),
-                    resizable: true,
-                    level: window::Level::AlwaysOnTop,
-                    ..Default::default()
-                });
-                self.dimstyle_window = Some(id);
+                self.active_modal = Some(super::ModalKind::DimStyle);
                 self.style_stage_begin();
-                task.map(|_| Message::Noop)
+                Task::none()
             }
             Message::DimStyleDialogClose => {
-                if let Some(id) = self.dimstyle_window.take() {
-                    window::close(id)
-                } else {
-                    Task::none()
-                }
+                self.active_modal = None;
+                Task::none()
             }
             Message::DimStyleDialogApply => {
                 let i = self.active_tab;
@@ -7343,17 +7316,13 @@ impl OpenCADStudio {
                 let i = self.active_tab;
                 self.tabs[i].properties.color_picker_open = false;
                 self.tabs[i].layers.color_picker_row = None;
-                if let Some(id) = self.color_pick_window {
-                    return window::gain_focus(id);
-                }
-                let (id, task) = window::open(window::Settings {
-                    size: iced::Size::new(420.0, 470.0),
-                    resizable: true,
-                    level: window::Level::AlwaysOnTop,
-                    ..Default::default()
-                });
-                self.color_pick_window = Some(id);
-                task.map(|_| Message::Noop)
+                // Shown as a nested modal over the active dialog (Plan B):
+                // `color_pick_target.is_some()` drives the overlay in view_main.
+                Task::none()
+            }
+            Message::CloseColorPicker => {
+                self.color_pick_target = None;
+                Task::none()
             }
             Message::ColorWindowPick(color) => {
                 let s = crate::ui::color_select::color_to_aci_string(color);
@@ -7384,14 +7353,11 @@ impl OpenCADStudio {
                     }
                     None => None,
                 };
-                let mut tasks = Vec::new();
                 if let Some(m) = edit {
-                    tasks.push(self.update(m));
+                    self.update(m)
+                } else {
+                    Task::none()
                 }
-                if let Some(id) = self.color_pick_window.take() {
-                    tasks.push(window::close(id));
-                }
-                Task::batch(tasks)
             }
             Message::DsSetHandle { field, value } => {
                 let i = self.active_tab;
