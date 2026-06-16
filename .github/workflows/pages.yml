@@ -1,0 +1,61 @@
+# Build the wasm web app and publish it to GitHub Pages on every release
+# (issue #45). No threads are used on wasm (rayon runs sequentially), so the
+# COOP/COEP headers GitHub Pages can't set are not needed.
+name: Deploy web (GitHub Pages)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one Pages deployment at a time.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install trunk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: trunk
+
+      # The rust <link> in index.html sets `data-cargo-no-default-features`,
+      # so this drops the `solid3d` feature (truck-meshalgo → lzma-sys C deps
+      # that can't cross-compile to wasm). `--public-url` matches the project
+      # page sub-path: https://<user>.github.io/OpenCADStudio/.
+      - name: Build web bundle
+        run: trunk build --release --public-url /OpenCADStudio/
+
+      # GitHub Pages runs Jekyll, which ignores files; opt out so the
+      # wasm-bindgen output is served verbatim.
+      - run: touch dist/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
