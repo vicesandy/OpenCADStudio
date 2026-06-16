@@ -43,7 +43,6 @@ acadrust = "0.3.4"
 printpdf = "0.9.1"
 flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tiff"] }
-rayon = "1"
 inventory = "0.3"
 truck-shapeops = { version = "0.4", optional = true }
 # Fast non-cryptographic hasher. Handle/u64 keys dominate the hot block,
@@ -77,6 +76,7 @@ windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_Window
 acadrust = { git = "https://github.com/HakanSeven12/acadrust", branch = "main" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rayon = "1"
 open = "5"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 

@@ -155,7 +155,7 @@ pub fn build_derived_caches(doc: &CadDocument) -> DerivedCaches {
     // filters that `cache::block_cache::build_defn` already uses for block defns)
     // and prefer the entity-scan when the header center drifts more than
     // 10× its own half-span away from the entity centroid.
-    use rayon::prelude::*;
+    use crate::par::prelude::*;
 
     // Single pass over entities does triple duty: classify cache-kind handle
     // lists (hatch / image / mesh) AND accumulate per-entity centroids for the
@@ -2245,7 +2245,7 @@ impl Scene {
         };
 
         // Tessellate in parallel across all available CPU cores.
-        use rayon::prelude::*;
+        use crate::par::prelude::*;
         let doc = &self.document;
         // Selection / hover highlight is NOT baked into tessellation. It is
         // applied per frame in the GPU xray overlay pass from the live
@@ -4297,7 +4297,7 @@ impl Scene {
             })
             .collect();
 
-        use rayon::prelude::*;
+        use crate::par::prelude::*;
         self.hatches = entries
             .into_par_iter()
             .filter_map(|(handle, kind)| {
@@ -4350,7 +4350,7 @@ impl Scene {
             })
             .collect();
 
-        use rayon::prelude::*;
+        use crate::par::prelude::*;
         let facet_res = self.document.header.facet_resolution;
         let woff = self.world_offset;
         self.meshes = entries

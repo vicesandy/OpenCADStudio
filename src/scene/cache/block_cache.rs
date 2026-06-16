@@ -125,7 +125,7 @@ impl BlockCache {
     /// because their entities are emitted as top-level wires, not via the
     /// cache.
     pub fn build(doc: &CadDocument, anno_scale: f32, bg_color: [f32; 4]) -> Self {
-        use rayon::prelude::*;
+        use crate::par::prelude::*;
         let mut cache = Self::new();
         let referenced = collect_referenced_blocks(doc);
         // Each defn is built independently: nested INSERTs are stored as
@@ -151,7 +151,7 @@ impl BlockCache {
     /// called in. Cycle guard: a self-referential block keeps an empty AABB
     /// (will fail every frustum test → not emitted, which is correct).
     fn compute_block_aabbs(&mut self, names: &[String]) {
-        use rayon::prelude::*;
+        use crate::par::prelude::*;
         // Phase 1 (parallel, read-only): each defn's union AABB is resolved
         // by `defn_aabb_recursive`, which only *reads* `self.defns` (the map
         // is fully built by now). There's no memoization, so a defn shared by

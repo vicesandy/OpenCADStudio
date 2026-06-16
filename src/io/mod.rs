@@ -602,7 +602,7 @@ pub(crate) fn is_entity_corrupt(e: &EntityType) -> bool {
 }
 
 pub fn purge_corrupt_entities(doc: &mut CadDocument) -> usize {
-    use rayon::prelude::*;
+    use crate::par::prelude::*;
     // Detection is pure and read-only; the per-vertex finite/extent checks on
     // large polylines dominate, so fan the scan out across cores. Gather
     // entity references in one pass, test in parallel, then remove serially

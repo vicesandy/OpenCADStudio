@@ -24,7 +24,7 @@
 
 use crate::scene::model::wire_model::WireModel;
 use iced::wgpu;
-use rayon::prelude::*;
+use crate::par::prelude::*;
 
 /// Allocate a VERTEX buffer with `mapped_at_creation` and write `data` directly
 /// into the mapped slice. Skips the intermediate staging copy that
@@ -295,7 +295,7 @@ impl WireGpu {
         scissor: Option<[f32; 4]>,
         mesh_edge: bool,
     ) -> Vec<Self> {
-        use rayon::prelude::*;
+        use crate::par::prelude::*;
         const MAX_INSTANCES: usize = 268_435_456 / std::mem::size_of::<WireInstance>();
         let per: Vec<Vec<WireInstance>> = wires
             .par_iter()
@@ -340,6 +340,7 @@ impl WireGpu {
         // within a batch does not affect correctness. `reduce` concatenates the
         // per-wire Vec<WireInstance> chunks while letting rayon spread work
         // across cores.
+        #[cfg(not(target_arch = "wasm32"))]
         let instances: Vec<WireInstance> = wires
             .par_iter()
             .map(|wire| emit_wire_instances(wire, wire.color, wire_draw_depth(wire, depth_map)))
@@ -353,6 +354,12 @@ impl WireGpu {
                     acc
                 }
             });
+        // Web: no thread pool — concatenate the per-wire streams sequentially.
+        #[cfg(target_arch = "wasm32")]
+        let instances: Vec<WireInstance> = wires
+            .iter()
+            .flat_map(|wire| emit_wire_instances(wire, wire.color, wire_draw_depth(wire, depth_map)))
+            .collect();
 
         if instances.is_empty() {
             return vec![];

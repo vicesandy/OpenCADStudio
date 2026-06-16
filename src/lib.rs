@@ -11,5 +11,6 @@ pub mod patterns;
 pub mod scene;
 pub mod snap;
 pub mod ui;
+pub mod par;
 pub mod sys;
 pub mod update_check;
