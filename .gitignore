@@ -32,3 +32,6 @@ build-dir/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Claude Code local preview/dev-server config
+.claude/launch.json
