@@ -5135,11 +5135,12 @@ impl OpenCADStudio {
                     self.ribbon.active_color = color;
                 } else {
                     self.push_undo_snapshot(i, "CHPROP");
-                    for handle in handles {
+                    for &handle in &handles {
                         if let Some(entity) = self.tabs[i].scene.document.get_entity_mut(handle) {
                             crate::scene::view::dispatch::apply_color(entity, color);
                         }
                     }
+                    self.invalidate_property_targets(i, &handles);
                     self.tabs[i].dirty = true;
                     self.ribbon.active_color = color;
                     self.refresh_properties();

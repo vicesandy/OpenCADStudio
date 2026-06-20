@@ -1095,16 +1095,19 @@ impl Scene {
     pub fn recolor_meshes(&mut self) {
         // Cache colour lookups by handle to avoid borrowing the document
         // re-entrantly through `render_style` inside a `&mut self` loop.
+        // Covers both top-level solid meshes and block-definition meshes
+        // (instanced per INSERT), so a solid recolours wherever it lives.
         let colors: HashMap<Handle, [f32; 4]> = self
             .meshes
             .keys()
+            .chain(self.block_meshes.keys())
             .filter_map(|&h| {
                 self.document
                     .get_entity(h)
                     .map(|e| (h, self.render_style(e).0))
             })
             .collect();
-        for (h, set) in self.meshes.iter_mut() {
+        for (h, set) in self.meshes.iter_mut().chain(self.block_meshes.iter_mut()) {
             if let Some(&c) = colors.get(h) {
                 for lod in &mut set.lods {
                     lod.color = c;

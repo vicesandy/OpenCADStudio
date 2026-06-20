@@ -478,6 +478,10 @@ impl OpenCADStudio {
         for &handle in handles {
             self.tabs[i].scene.mark_entity_dirty(handle);
         }
+        // Solid (ACIS) meshes bake their colour into the mesh, so a colour /
+        // layer change needs an explicit recolour — re-tessellating wires
+        // alone wouldn't update them.
+        self.tabs[i].scene.recolor_meshes();
         self.tabs[i].scene.bump_geometry_no_blocks();
     }
 
