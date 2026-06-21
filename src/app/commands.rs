@@ -2192,6 +2192,13 @@ impl OpenCADStudio {
                 }
                 self.tabs[i].refedit_session.as_mut().unwrap().temp_handles = temp_handles.clone();
 
+                // Fade everything except the entities being edited, so the
+                // surrounding drawing stays visible for context but the block's
+                // geometry stands out. (#136)
+                self.tabs[i]
+                    .scene
+                    .set_refedit_keep(Some(temp_handles.iter().copied().collect()));
+
                 // Select the temp entities so user can see what they're editing.
                 self.tabs[i].scene.deselect_all();
                 for h in &temp_handles {
@@ -2199,14 +2206,13 @@ impl OpenCADStudio {
                 }
                 self.tabs[i].dirty = true;
 
+                // No active command — the user edits the block's geometry freely
+                // (move, grips, draw, erase…) and runs REFCLOSE when done. (#136)
+                self.tabs[i].active_cmd = None;
                 self.command_line.push_info(&format!(
-                    "REFEDIT: Editing block \"{}\". Use REFCLOSE when done.",
+                    "REFEDIT: Editing block \"{}\". Run REFCLOSE to save, REFCLOSE_DISCARD to cancel.",
                     insert.block_name
                 ));
-                use crate::modules::draw::modify::refedit::RefCloseCommand;
-                let cmd_obj = RefCloseCommand::new();
-                self.command_line.push_info(&cmd_obj.prompt());
-                self.tabs[i].active_cmd = Some(Box::new(cmd_obj));
             }
 
             "REFCLOSE" => {
@@ -2291,6 +2297,9 @@ impl OpenCADStudio {
                     "REFCLOSE: Block \"{}\" saved. All references updated.",
                     session.block_name
                 ));
+                // End the edit fade before rebuilding, so the restored geometry
+                // recolours bright. (#136)
+                self.tabs[i].scene.set_refedit_keep(None);
                 // Rebuild hatch/image/mesh caches since block content changed.
                 self.tabs[i].scene.rebuild_derived_caches();
             }
@@ -2307,6 +2316,8 @@ impl OpenCADStudio {
                 // Remove temp entities without modifying the block.
                 self.tabs[i].scene.erase_entities(&session.temp_handles);
                 self.tabs[i].scene.deselect_all();
+                // End the edit fade — restore the drawing to full brightness.
+                self.tabs[i].scene.set_refedit_keep(None);
                 self.command_line
                     .push_output("REFCLOSE: Changes discarded.");
             }

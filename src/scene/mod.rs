@@ -663,6 +663,11 @@ pub struct Scene {
     /// `tessellate_block`'s visibility test skips these, so they neither
     /// render nor hit-test until isolation ends.
     pub hidden: HashSet<Handle>,
+    /// During in-place block edit (REFEDIT), the handles of the entities being
+    /// edited. Everything else is rendered faded toward the background so the
+    /// edited geometry stands out while the surrounding drawing stays visible
+    /// for context. `None` = not editing. (#136)
+    pub refedit_keep: Option<HashSet<Handle>>,
     /// Entity drawn with the selection-highlight colour without being part
     /// of the real selection — used to preview a row in the cycling list box.
     pub hover_highlight: Option<Handle>,
@@ -883,6 +888,7 @@ impl Scene {
             document: CadDocument::new(),
             selected: HashSet::default(),
             hidden: HashSet::default(),
+            refedit_keep: None,
             hover_highlight: None,
             transparency_display: true,
             selection_filter: HashSet::default(),
@@ -1097,14 +1103,22 @@ impl Scene {
         // re-entrantly through `render_style` inside a `&mut self` loop.
         // Covers both top-level solid meshes and block-definition meshes
         // (instanced per INSERT), so a solid recolours wherever it lives.
+        // During REFEDIT, solids outside the edited set render faded.
+        let bg = self.bg_color;
         let colors: HashMap<Handle, [f32; 4]> = self
             .meshes
             .keys()
             .chain(self.block_meshes.keys())
             .filter_map(|&h| {
-                self.document
-                    .get_entity(h)
-                    .map(|e| (h, self.render_style(e).0))
+                self.document.get_entity(h).map(|e| {
+                    let mut c = self.render_style(e).0;
+                    if let Some(keep) = &self.refedit_keep {
+                        if !keep.contains(&h) {
+                            c = crate::scene::cache::block_cache::fade_toward_bg(c, bg);
+                        }
+                    }
+                    (h, c)
+                })
             })
             .collect();
         for (h, set) in self.meshes.iter_mut().chain(self.block_meshes.iter_mut()) {
@@ -1112,6 +1126,31 @@ impl Scene {
                 for lod in &mut set.lods {
                     lod.color = c;
                 }
+            }
+        }
+    }
+
+    /// Enter / leave the REFEDIT fade. `keep` holds the edited entities (left
+    /// bright); everything else renders faded. Re-tessellates wires and
+    /// recolours solids so the change shows immediately. (#136)
+    pub fn set_refedit_keep(&mut self, keep: Option<HashSet<Handle>>) {
+        self.refedit_keep = keep;
+        self.recolor_meshes();
+        self.bump_geometry();
+    }
+
+    /// Fade the colours of wires that belong to entities outside the REFEDIT
+    /// keep set (no-op when not editing). The geometry is untouched, so
+    /// hit-testing still works on faded entities.
+    fn apply_refedit_fade(&self, wires: &mut [WireModel], bg: [f32; 4]) {
+        let Some(keep) = &self.refedit_keep else {
+            return;
+        };
+        for w in wires.iter_mut() {
+            let keep_bright =
+                Self::handle_from_wire_name(&w.name).is_some_and(|h| keep.contains(&h));
+            if !keep_bright {
+                w.color = crate::scene::cache::block_cache::fade_toward_bg(w.color, bg);
             }
         }
     }
@@ -1779,7 +1818,9 @@ impl Scene {
         };
         let block = self.model_space_block_handle();
         let t_tess = iced::time::Instant::now();
-        let arc = Arc::new(self.wires_for_block_culled(block, tess_region, wpp, None, None));
+        let mut wires = self.wires_for_block_culled(block, tess_region, wpp, None, None);
+        self.apply_refedit_fade(&mut wires, self.bg_color);
+        let arc = Arc::new(wires);
         self.last_tess_ms.set(t_tess.elapsed().as_secs_f32() * 1000.0);
         self.last_tess_wires.set(arc.len());
         let stored_region = tess_region
@@ -1818,6 +1859,12 @@ impl Scene {
             let sheet_name = sheet.value().to_string();
             wires.retain(|w| w.name != sheet_name);
         }
+        let bg = if self.current_layout == "Model" {
+            self.bg_color
+        } else {
+            self.paper_bg_color
+        };
+        self.apply_refedit_fade(&mut wires, bg);
         let arc = Arc::new(wires);
         *self.paper_sheet_cache.borrow_mut() = Some((key, Arc::clone(&arc)));
         arc

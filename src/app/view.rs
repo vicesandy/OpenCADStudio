@@ -687,6 +687,16 @@ impl OpenCADStudio {
             }
         }
 
+        // In-place block edit (REFEDIT): right-edge toolbar with Save / Discard
+        // so the edit can be finished by clicking. (#136)
+        if tab.refedit_session.is_some() && !tab.is_start {
+            if let Some(tb) = crate::ui::side_toolbar::view(
+                &crate::modules::draw::modify::refedit::refedit_tools(),
+            ) {
+                viewport_stack = viewport_stack.push(tb);
+            }
+        }
+
         // Quick Properties: compact floating property panel on selection,
         // anchored at the canvas top-left so it doesn't track the cursor.
         if self.quick_properties && !tab.is_start {

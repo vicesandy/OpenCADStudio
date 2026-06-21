@@ -17,6 +17,26 @@ use acadrust::{EntityType, Handle};
 use glam::Vec3;
 
 use crate::command::{CadCommand, CmdResult};
+use crate::modules::{IconKind, ModuleEvent, ToolDef};
+
+/// Right-edge side-toolbar buttons shown while a REFEDIT session is active:
+/// save the in-place block edit, or discard it. (#136)
+pub fn refedit_tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef {
+            id: "REFCLOSE_SAVE",
+            label: "Save Block Edit",
+            icon: IconKind::Svg(include_bytes!("../../../../assets/icons/mt_ok.svg")),
+            event: ModuleEvent::Command("REFCLOSE_SAVE".to_string()),
+        },
+        ToolDef {
+            id: "REFCLOSE_DISCARD",
+            label: "Discard Block Edit",
+            icon: IconKind::Svg(include_bytes!("../../../../assets/icons/mt_cancel.svg")),
+            event: ModuleEvent::Command("REFCLOSE_DISCARD".to_string()),
+        },
+    ]
+}
 
 // ── Session state (held in DocumentTab) ───────────────────────────────────
 
