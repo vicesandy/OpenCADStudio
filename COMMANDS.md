@@ -85,11 +85,11 @@ Status of every standard CAD command in Open CAD Studio:
 | `3DMIRROR` | — | 3D mirror | ❌ |
 | `3DMOVE` | — | 3D move | ❌ |
 | `3DROTATE` | — | 3D rotate | ❌ |
-| `3DARRAY` | — | 3D array | ❌ |
+| `3DARRAY` | ARRAY3D | 3D array | ✅ |
 | `SLICE` | SL | Slice solid | ❌ |
-| `SUBTRACT` | SU | Subtract solids | ❌ |
-| `UNION` | UNI | Union solids | ❌ |
-| `INTERSECT` | IN | Intersect solids | ❌ |
+| `SUBTRACT` | SU | Subtract solids | ✅ |
+| `UNION` | UNI | Union solids | ✅ |
+| `INTERSECT` | IN | Intersect solids | ✅ |
 | `CHAMFERSOLID` | — | Chamfer solid edge | ❌ |
 | `FILLETEDGE` | — | Fillet solid edge | ❌ |
 
@@ -161,8 +161,8 @@ Status of every standard CAD command in Open CAD Studio:
 | `VPLAYER` | — | Viewport layer control | ✅ |
 | `LINETYPE` | LT | Linetype manager | ✅ |
 | `LTSCALE` | — | Global linetype scale | ✅ |
-| `LAYISO` | — | Isolate layer | ❌ |
-| `LAYUNISO` | — | End layer isolation | ❌ |
+| `LAYISO` | — | Isolate layer | ✅ |
+| `LAYUNISO` | — | End layer isolation | ✅ |
 | `LAYWALK` | — | Walk through layers | ❌ |
 | `LAYDEL` | — | Delete layer | ❌ |
 | `LAYMRG` | — | Merge layers | ❌ |
@@ -214,10 +214,10 @@ Status of every standard CAD command in Open CAD Studio:
 | `MASSPROP` | — | Mass properties | ✅ |
 | `EXPORTSTEP` | — | Export to STEP | ✅ |
 | `EXPORTSTL` | — | Export to STL | ✅ |
-| `CONE` | — | Cone solid | ❌ |
+| `CONE` | — | Cone solid | ✅ |
 | `PYRAMID` | — | Pyramid solid | ❌ |
-| `WEDGE` | — | Wedge solid | ❌ |
-| `TORUS` | — | Torus solid | ❌ |
+| `WEDGE` | — | Wedge solid | ✅ |
+| `TORUS` | — | Torus solid | ✅ |
 | `HELIX` | — | 3D helix | ❌ |
 | `POLYSOLID` | — | Wall-like solid | ❌ |
 | `PRESSPULL` | — | Push / pull a face | ❌ |
@@ -225,9 +225,9 @@ Status of every standard CAD command in Open CAD Studio:
 | `CONVTOSOLID` | — | Convert to solid | ❌ |
 | `CONVTOSURFACE` | — | Convert to surface | ❌ |
 | `SLICE` | SL | Slice solid with plane | ❌ |
-| `SUBTRACT` | SU | Subtract solids | ❌ |
-| `UNION` | UNI | Union solids | ❌ |
-| `INTERSECT` | IN | Intersect solids | ❌ |
+| `SUBTRACT` | SU | Subtract solids | ✅ |
+| `UNION` | UNI | Union solids | ✅ |
+| `INTERSECT` | IN | Intersect solids | ✅ |
 | `SECTION` | SEC | Section plane | ❌ |
 | `SECTIONPLANE` | — | Section plane object | ❌ |
 | `FLATSHOT` | — | 2D view from 3D | ❌ |
@@ -257,7 +257,7 @@ Status of every standard CAD command in Open CAD Studio:
 | `SHEETSET` | SSM | Sheet set manager | 🔶 |
 | `FILETAB` | — | Toggle file tabs | 🔶 |
 | `LAYOUTTAB` | — | Toggle layout tabs | 🔶 |
-| `VIEW` | V | Named views manager | ❌ |
+| `VIEW` | V | Named views manager | ✅ |
 | `DVIEW` | DV | Dynamic view (legacy) | ❌ |
 | `NAVSWHEEL` | — | Steering wheel | ❌ |
 | `RENDER` | RR | Render | ❌ |
@@ -282,9 +282,9 @@ Status of every standard CAD command in Open CAD Studio:
 | `QSELECT` | — | Quick select | ✅ |
 | `STATUS` | — | Drawing status | ✅ |
 | `COUNT` | — | Count objects | ✅ |
-| `DIST` | DI | Distance between two points | ❌ |
-| `ID` | — | Point coordinate | ❌ |
-| `LIST` | LI | List object data | ❌ |
+| `DIST` | DI | Distance between two points | ✅ |
+| `ID` | — | Point coordinate | ✅ |
+| `LIST` | LI | List object data | ✅ |
 | `DBLIST` | — | List all objects | ❌ |
 | `MEASUREGEOM` | — | Measure distance / angle / area | ❌ |
 | `QUICKCALC` | QC | Quick calculator | ❌ |
@@ -309,7 +309,7 @@ Status of every standard CAD command in Open CAD Studio:
 | `EXPORTPDF` | — | Export to PDF | ❌ |
 | `RECOVER` | — | Recover damaged drawing | ❌ |
 | `CLOSE` | — | Close drawing | ❌ |
-| `QUIT` | — | Exit application | ❌ |
+| `QUIT` | — | Exit application | ✅ |
 | `ARCHIVE` | — | Archive drawing set | ❌ |
 | `ETRANSMIT` | — | Transmit drawing package | ❌ |
 
@@ -348,14 +348,14 @@ Status of every standard CAD command in Open CAD Studio:
 | Category | Total | ✅ Done | 🔶 Partial | ❌ Missing |
 |---|---|---|---|---|
 | Draw | 31 | 20 | 0 | 11 |
-| Modify | 42 | 30 | 1 | 11 |
+| Modify | 42 | 34 | 1 | 7 |
 | Dimension | 25 | 22 | 0 | 3 |
 | Text & Table | 9 | 6 | 2 | 1 |
-| Layer | 19 | 12 | 0 | 7 |
+| Layer | 19 | 14 | 0 | 5 |
 | Block & Reference | 22 | 11 | 6 | 5 |
-| 3D Modeling | 28 | 10 | 0 | 18 |
-| View & Navigation | 31 | 10 | 8 | 13 |
-| Inquiry | 12 | 5 | 0 | 7 |
-| File & Plot | 16 | 10 | 0 | 6 |
+| 3D Modeling | 28 | 16 | 0 | 12 |
+| View & Navigation | 31 | 11 | 8 | 12 |
+| Inquiry | 12 | 8 | 0 | 4 |
+| File & Plot | 16 | 11 | 0 | 5 |
 | Manage & Customize | 21 | 5 | 7 | 9 |
-| **Total** | **256** | **141** | **24** | **91** |
+| **Total** | **256** | **158** | **24** | **74** |
