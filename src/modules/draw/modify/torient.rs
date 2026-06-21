@@ -185,3 +185,6 @@ impl CadCommand for TorientCommand {
         matches!(self.step, Step::AngleOrFirstPoint)
     }
 }
+
+// ── Autocomplete registry ─────────────────────────────────
+inventory::submit!(crate::command::CommandRegistration { names: &["TORIENT"] });
